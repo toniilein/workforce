@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Workforce — Agent Kanban</title>
+<link rel="stylesheet" href="/styles.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="brand-dot"></span><span id="board-title">Workforce</span></div>
+  <div class="topbar-actions">
+    <input id="search" type="search" placeholder="Filter tasks…" />
+    <select id="filter-assignee"><option value="">All members</option></select>
+    <button id="btn-team" class="ghost">👥 Team</button>
+    <button id="btn-activity" class="ghost">⚡ Activity</button>
+    <span id="live" class="live" title="Live connection">●</span>
+  </div>
+</header>
+
+<main id="board" class="board"></main>
+
+<!-- card detail drawer -->
+<aside id="drawer" class="drawer" hidden>
+  <div class="drawer-head">
+    <span id="drawer-section" class="chip"></span>
+    <button id="drawer-close" class="icon-btn">✕</button>
+  </div>
+  <textarea id="d-title" class="d-title" rows="2"></textarea>
+  <div class="d-row">
+    <label>Assignee</label>
+    <select id="d-assignee"></select>
+  </div>
+  <div class="d-row">
+    <label>Section</label>
+    <select id="d-column"></select>
+  </div>
+  <div class="d-row">
+    <label>Due</label>
+    <input id="d-due" type="date" />
+  </div>
+  <div class="d-row">
+    <label>Labels</label>
+    <input id="d-labels" placeholder="comma,separated" />
+  </div>
+  <label class="d-label">Description / agent brief</label>
+  <textarea id="d-desc" class="d-desc" rows="6" placeholder="What should be done? Context, links, definition of done…"></textarea>
+  <label class="d-label">Checklist</label>
+  <ul id="d-checklist" class="checklist"></ul>
+  <div class="checklist-add">
+    <input id="d-check-new" placeholder="Add checklist item…" />
+    <button id="d-check-add" class="ghost small">Add</button>
+  </div>
+  <label class="d-label">Discussion <span class="muted">(you + agents)</span></label>
+  <div id="d-comments" class="comments"></div>
+  <div class="comment-add">
+    <textarea id="d-comment-new" rows="2" placeholder="Write a message to the team…"></textarea>
+    <button id="d-comment-send" class="primary small">Send</button>
+  </div>
+  <div class="drawer-foot">
+    <button id="d-delete" class="danger small">Delete task</button>
+    <span id="d-meta" class="muted small"></span>
+  </div>
+</aside>
+
+<!-- team panel -->
+<aside id="team" class="drawer" hidden>
+  <div class="drawer-head"><strong>Team</strong><button class="icon-btn" data-close="team">✕</button></div>
+  <div id="team-list" class="team-list"></div>
+  <label class="d-label">Add agent or person</label>
+  <div class="agent-form">
+    <input id="a-id" placeholder="id (e.g. research)" />
+    <input id="a-name" placeholder="display name" />
+    <input id="a-avatar" placeholder="emoji" maxlength="4" />
+    <input id="a-role" placeholder="role (agent / human)" />
+    <button id="a-add" class="primary small">Add</button>
+  </div>
+  <label class="d-label">API access for agents</label>
+  <div class="apikey">
+    <input id="apikey" placeholder="X-API-Key (only if server has one)" />
+    <button id="apikey-save" class="ghost small">Save</button>
+  </div>
+  <p class="muted small">Agents drive this board over the REST API — see <code>AGENTS.md</code>.</p>
+</aside>
+
+<!-- activity panel -->
+<aside id="activity" class="drawer" hidden>
+  <div class="drawer-head"><strong>Activity</strong><button class="icon-btn" data-close="activity">✕</button></div>
+  <div id="activity-list" class="activity-list"></div>
+</aside>
+
+<div id="scrim" class="scrim" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

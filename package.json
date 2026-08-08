@@ -1,0 +1,14 @@
+{
+  "name": "workforce",
+  "version": "1.0.0",
+  "description": "Kanban board for a human + AI-agent project team. Zero dependencies.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
