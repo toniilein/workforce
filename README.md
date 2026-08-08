@@ -33,26 +33,37 @@ Then open http://localhost:3000
 
 ## Data
 
-State lives in `data/board.json` (written atomically on each change). `data/seed.json` is the starting
-board — delete `data/board.json` to reset. It's plain JSON, so a copy is a backup.
+State lives in `data/board.json`, written atomically (temp file + rename), coalesced over ~150 ms and
+forced through at least once a second during sustained activity. `SIGTERM`/`SIGINT` flush before exit,
+so a redeploy or a Stop click doesn't drop the last change.
 
-`data/board.json` is **gitignored** on purpose: the repo carries the empty-ish seed, not your live
-tasks. To snapshot the real board anyway: `git add -f data/board.json`.
+If `data/board.json` is ever unreadable, the server does **not** quietly reseed over it: it renames the
+file to `board.json.corrupt-<timestamp>`, tells you where it went, and refuses to start.
+
+`data/seed.json` is the board a fresh install starts from — delete `data/board.json` to reset to it.
+It's plain JSON, so a copy is a backup.
+
+⚠️ `data/board.json` is gitignored, so your live board is not in the repo. **`data/seed.json` is in the
+repo and this repo is public** — whatever tasks are in the seed are readable by anyone. Replace the seed
+with generic examples if that isn't what you want. To snapshot your real board deliberately:
+`git add -f data/board.json`.
 
 ## Deploying to Replit
 
-1. Create a Repl → **Import from GitHub**, or drag this folder into a blank Node.js Repl.
-2. `.replit` is already set up (`node server.js`, port 3000 → 80).
-3. Press **Run**, then **Deploy** for a stable URL.
-4. In **Secrets**, set `API_KEY` to any random string. The server then rejects unauthenticated calls;
-   put the same value in the board's Team panel → *API access*, and give it to your agents as
-   `X-API-Key`.
+1. Create a Repl → **Import from GitHub** (`toniilein/workforce`).
+2. `.replit` is already set up: `node server.js`, port 3000 → 80, no dependencies to install.
+3. Press **Run**, then **Deploy**.
+4. Choose **Reserved VM**, not Autoscale — `.replit` already requests it. Autoscale runs several copies
+   of the process, each with its own board and its own SSE clients, and wipes the filesystem on every
+   cold start, so the board silently reverts to the seed. One always-on instance is what this design needs.
+5. In **Secrets**, set `API_KEY` to any random string. The server then rejects unauthenticated calls;
+   put the same value in the board's Team panel → *API access*, and give it to your agents as `X-API-Key`.
 
-⚠️ Without `API_KEY` set, a deployed board is world-writable. Set it before sharing the URL.
+⚠️ Without `API_KEY` set, a deployed board is world-writable by anyone with the URL.
 
-Replit's filesystem is ephemeral on redeploy — for anything you can't afford to lose, commit
-`data/board.json` to git periodically or swap the store in `server.js` (`loadBoard`/`persistNow`) for
-Replit DB or Postgres. Those two functions are the only place storage is touched.
+Even on a Reserved VM the file store is a single point of failure. `loadBoard`/`persistNow` in
+`server.js` are the only two functions that touch storage — swap them for Postgres when the board
+starts holding work you can't recreate.
 
 ## Connecting agents
 

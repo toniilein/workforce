@@ -7,7 +7,12 @@ channel = "stable-24_05"
 
 [deployment]
 run = ["node", "server.js"]
-deploymentTarget = "autoscale"
+# Reserved VM, NOT autoscale: the board is a single process holding state in one
+# JSON file with in-process SSE clients. Autoscale would run several instances
+# (each with its own copy of the board) and wipe the filesystem on every cold
+# start, so the board would silently reset. Keep "vm" unless the store moves to
+# an external database.
+deploymentTarget = "vm"
 
 [[ports]]
 localPort = 3000

@@ -39,19 +39,27 @@ async function api(method, path, body) {
 
 const agentById = (id) => board.agents.find((a) => a.id === id);
 
+// Defensive: an agent can PATCH any shape into the board over the API, and one
+// bad field must not blank the whole UI.
+const asArray = (v) => (Array.isArray(v) ? v : []);
+const HEX_COLOR = /^#[0-9a-f]{3,8}$/i;
+const safeColor = (v, fallback) => (typeof v === 'string' && HEX_COLOR.test(v.trim()) ? v.trim() : fallback);
+
 function avatarNode(assigneeId) {
   const agent = agentById(assigneeId);
   const node = el('div', 'avatar' + (agent ? '' : ' empty'));
   node.textContent = agent ? agent.avatar || '🤖' : '👤';
   node.title = agent ? `${agent.name} (${agent.role})` : 'Unassigned';
-  if (agent) node.style.background = agent.color || '#6b7ce0';
+  if (agent) node.style.background = safeColor(agent.color, '#6b7ce0');
   return node;
 }
+
+const filterActive = () => Boolean(filter.text || filter.assignee);
 
 function matchesFilter(card) {
   if (filter.assignee && card.assignee !== filter.assignee) return false;
   if (filter.text) {
-    const hay = `${card.title} ${card.description || ''} ${(card.labels || []).join(' ')}`.toLowerCase();
+    const hay = `${card.title} ${card.description || ''} ${asArray(card.labels).join(' ')}`.toLowerCase();
     if (!hay.includes(filter.text)) return false;
   }
   return true;
@@ -66,14 +74,14 @@ function cardNode(card, column) {
   node.appendChild(avatarNode(card.assignee));
 
   const meta = el('div', 'card-meta');
-  for (const label of card.labels || []) meta.appendChild(el('span', 'label', label));
+  for (const label of asArray(card.labels)) meta.appendChild(el('span', 'label', String(label)));
   if (card.due) {
-    const overdue = new Date(card.due) < new Date(new Date().toDateString());
-    meta.appendChild(el('span', 'due' + (overdue ? ' overdue' : ''), `📅 ${formatDate(card.due)}`));
+    meta.appendChild(el('span', 'due' + (isOverdue(card.due) ? ' overdue' : ''), `📅 ${formatDate(card.due)}`));
   }
-  const checks = card.checklist || [];
-  if (checks.length) meta.appendChild(el('span', 'badge', `☑ ${checks.filter((c) => c.done).length}/${checks.length}`));
-  if ((card.comments || []).length) meta.appendChild(el('span', 'badge', `💬 ${card.comments.length}`));
+  const checks = asArray(card.checklist);
+  if (checks.length) meta.appendChild(el('span', 'badge', `☑ ${checks.filter((c) => c && c.done).length}/${checks.length}`));
+  const comments = asArray(card.comments);
+  if (comments.length) meta.appendChild(el('span', 'badge', `💬 ${comments.length}`));
   if (meta.childElementCount) node.appendChild(meta);
 
   node.addEventListener('click', () => openCard(card.id));
@@ -91,15 +99,17 @@ function columnNode(column) {
   wrap.dataset.id = column.id;
 
   const head = el('div', 'col-head');
-  head.style.background = column.color;
+  head.style.background = safeColor(column.color, '#8b93a7');
   head.appendChild(el('span', 'icon', column.icon || '📋'));
   const title = el('span', 'title', column.title);
   head.appendChild(title);
-  const visible = column.cards.filter(matchesFilter);
-  head.appendChild(el('span', 'count', String(visible.length)));
+  const cards = asArray(column.cards);
+  const visible = cards.filter(matchesFilter);
+  head.appendChild(el('span', 'count', filterActive() ? `${visible.length}/${cards.length}` : String(cards.length)));
 
   // double-click the header to rename, right-click to recolor / delete
   head.addEventListener('dblclick', () => {
+    if (head.querySelector('input')) return; // already renaming; a second dblclick would throw
     const input = el('input');
     input.value = column.title;
     head.replaceChild(input, title);
@@ -142,7 +152,7 @@ function columnNode(column) {
     wrap.classList.remove('drop-target');
     const cardId = e.dataTransfer.getData('text/plain');
     if (!cardId) return;
-    const position = dropIndex(body, e.clientY, cardId);
+    const position = dropPosition(body, column, e.clientY, cardId);
     api('PATCH', `/api/cards/${cardId}`, { columnId: column.id, position });
   });
 
@@ -150,14 +160,24 @@ function columnNode(column) {
   return wrap;
 }
 
-// Where in the column did the pointer land?
-function dropIndex(body, y, draggedId) {
-  const cards = [...body.querySelectorAll('.card')].filter((c) => c.dataset.id !== draggedId);
-  for (let i = 0; i < cards.length; i++) {
-    const box = cards[i].getBoundingClientRect();
-    if (y < box.top + box.height / 2) return i;
+// Where in the column did the pointer land? The answer has to be an index into
+// the FULL card array, while only the filtered cards are on screen — so find the
+// rendered card the drop lands above, then look up where that one really sits.
+function dropPosition(body, column, y, draggedId) {
+  const rendered = [...body.querySelectorAll('.card')].filter((c) => c.dataset.id !== draggedId);
+  const full = asArray(column.cards).filter((c) => c.id !== draggedId);
+
+  let beforeId = null;
+  for (const node of rendered) {
+    const box = node.getBoundingClientRect();
+    if (y < box.top + box.height / 2) {
+      beforeId = node.dataset.id;
+      break;
+    }
   }
-  return cards.length;
+  if (beforeId === null) return full.length; // dropped below every visible card
+  const index = full.findIndex((c) => c.id === beforeId);
+  return index === -1 ? full.length : index;
 }
 
 function startNewCard(column, body, addBtn) {
@@ -188,10 +208,20 @@ function startNewCard(column, body, addBtn) {
 }
 
 function render() {
-  const scroll = $('#board').scrollLeft;
   const root = $('#board');
+  const scroll = root.scrollLeft;
+  // Agents act constantly; a re-render must not yank every column back to the top.
+  const scrollTops = new Map(
+    [...root.querySelectorAll('.column')].map((c) => [c.dataset.id, c.querySelector('.col-body')?.scrollTop || 0])
+  );
+
   root.innerHTML = '';
-  for (const column of board.columns) root.appendChild(columnNode(column));
+  for (const column of board.columns) {
+    const node = columnNode(column);
+    root.appendChild(node);
+    const previous = scrollTops.get(column.id);
+    if (previous) node.querySelector('.col-body').scrollTop = previous;
+  }
 
   const addCol = el('button', 'add-column', '+');
   addCol.title = 'Add section';
@@ -256,7 +286,7 @@ function renderDrawer() {
     $('#d-title').value = card.title;
     $('#d-desc').value = card.description || '';
     $('#d-due').value = card.due || '';
-    $('#d-labels').value = (card.labels || []).join(', ');
+    $('#d-labels').value = asArray(card.labels).join(', ');
   }
 
   const assignee = $('#d-assignee');
@@ -279,26 +309,25 @@ function renderDrawer() {
 
   const list = $('#d-checklist');
   list.innerHTML = '';
-  (card.checklist || []).forEach((item, i) => {
-    const li = el('li', item.done ? 'done' : '');
+  asArray(card.checklist).forEach((item, i) => {
+    const li = el('li', item && item.done ? 'done' : '');
     const box = el('input');
     box.type = 'checkbox';
-    box.checked = !!item.done;
-    box.addEventListener('change', () => {
-      const next = card.checklist.map((c, j) => (j === i ? { ...c, done: box.checked } : c));
-      api('PATCH', `/api/cards/${card.id}`, { checklist: next });
-    });
-    const remove = el('button', 'icon-btn', '✕');
-    remove.addEventListener('click', () =>
-      api('PATCH', `/api/cards/${card.id}`, { checklist: card.checklist.filter((_, j) => j !== i) })
+    box.checked = !!(item && item.done);
+    // Read the checklist at click time, not at render time: two quick ticks
+    // would otherwise both patch the same stale array and undo each other.
+    box.addEventListener('change', () =>
+      patchChecklist((items) => items.map((c, j) => (j === i ? { ...c, done: box.checked } : c)))
     );
-    li.append(box, el('span', null, item.text), remove);
+    const remove = el('button', 'icon-btn', '✕');
+    remove.addEventListener('click', () => patchChecklist((items) => items.filter((_, j) => j !== i)));
+    li.append(box, el('span', null, item && item.text ? item.text : ''), remove);
     list.appendChild(li);
   });
 
   const comments = $('#d-comments');
   comments.innerHTML = '';
-  for (const c of card.comments || []) {
+  for (const c of asArray(card.comments)) {
     const node = el('div', 'comment');
     const head = el('div');
     const agent = agentById(c.author);
@@ -307,7 +336,7 @@ function renderDrawer() {
     node.append(head, el('div', 'text', c.text));
     comments.appendChild(node);
   }
-  if (!card.comments?.length) comments.appendChild(el('div', 'muted small', 'No messages yet.'));
+  if (!asArray(card.comments).length) comments.appendChild(el('div', 'muted small', 'No messages yet.'));
 
   $('#d-meta').textContent = `${card.id} · created by ${card.createdBy || '—'}`;
 }
@@ -328,6 +357,15 @@ function patchOpenCard(patch) {
   api('PATCH', `/api/cards/${openCardId}`, patch);
 }
 
+// Always derives the new checklist from the CURRENT board state.
+function patchChecklist(transform) {
+  const hit = locate(openCardId);
+  if (!hit) return;
+  const next = transform(asArray(hit.card.checklist));
+  hit.card.checklist = next; // optimistic, so a second edit before the SSE frame sees it
+  api('PATCH', `/api/cards/${hit.card.id}`, { checklist: next });
+}
+
 /* ------------------------------------------------------------ side panels */
 
 function renderTeam() {
@@ -335,7 +373,8 @@ function renderTeam() {
   list.innerHTML = '';
   const load = {};
   for (const column of board.columns)
-    for (const card of column.cards) if (card.assignee) load[card.assignee] = (load[card.assignee] || 0) + 1;
+    for (const card of asArray(column.cards))
+      if (card.assignee && card.status !== 'done') load[card.assignee] = (load[card.assignee] || 0) + 1;
 
   for (const agent of board.agents) {
     const row = el('div', 'team-row');
@@ -382,9 +421,20 @@ function renderActivity() {
 
 /* --------------------------------------------------------------- helpers */
 
+// 'YYYY-MM-DD' parsed by `new Date()` is treated as UTC midnight, which renders
+// a day early for anyone west of UTC — parse the parts as a local date instead.
+function parseDay(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+}
+
+function isOverdue(iso) {
+  const today = new Date();
+  return parseDay(iso) < new Date(today.getFullYear(), today.getMonth(), today.getDate());
+}
+
 function formatDate(iso) {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return parseDay(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 function formatTime(iso) {
   const d = new Date(iso);
@@ -460,10 +510,9 @@ $('#d-check-new').addEventListener('keydown', (e) => e.key === 'Enter' && addChe
 function addCheckItem() {
   const input = $('#d-check-new');
   const text = input.value.trim();
-  const hit = locate(openCardId);
-  if (!text || !hit) return;
+  if (!text || !openCardId) return;
   input.value = '';
-  api('PATCH', `/api/cards/${openCardId}`, { checklist: [...(hit.card.checklist || []), { text, done: false }] });
+  patchChecklist((items) => [...items, { text, done: false }]);
 }
 
 $('#d-comment-send').addEventListener('click', sendComment);
@@ -496,16 +545,53 @@ $('#apikey-save').addEventListener('click', () => {
 
 /* ------------------------------------------------------------------ live */
 
+// EventSource retries transient drops itself, but a 401/404 or an HTML error page
+// (Replit serves one while a sleeping container wakes) closes it for good. Without
+// this loop the board silently freezes for the life of the tab.
+let source = null;
+let retryDelay = 1000;
+
 function connect() {
+  if (source) source.close();
   const url = apiKey() ? `/api/events?key=${encodeURIComponent(apiKey())}` : '/api/events';
-  const source = new EventSource(url);
+  source = new EventSource(url);
+
   source.addEventListener('board', (e) => {
-    board = JSON.parse(e.data);
+    try {
+      board = JSON.parse(e.data);
+    } catch {
+      return;
+    }
+    retryDelay = 1000;
     $('#live').classList.remove('off');
     render();
   });
-  source.onerror = () => $('#live').classList.add('off');
+
+  source.onerror = () => {
+    $('#live').classList.add('off');
+    if (source.readyState !== EventSource.CLOSED) return; // it will retry on its own
+    source.close();
+    const wait = retryDelay + Math.floor(Math.random() * 500);
+    retryDelay = Math.min(retryDelay * 2, 30000);
+    setTimeout(reconnect, wait);
+  };
 }
+
+async function reconnect() {
+  try {
+    // Re-fetch outright: frames sent while we were disconnected are gone.
+    board = await api('GET', '/api/board');
+    render();
+  } catch {
+    /* connect() below will keep retrying */
+  }
+  connect();
+}
+
+// A sleeping tab that wakes up should catch up immediately rather than wait out the backoff.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && source && source.readyState === EventSource.CLOSED) reconnect();
+});
 
 (async function start() {
   board = await api('GET', '/api/board');

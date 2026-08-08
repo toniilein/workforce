@@ -21,28 +21,77 @@ let board = null;
 let writeTimer = null;
 
 async function loadBoard() {
+  let raw = null;
   try {
-    board = JSON.parse(await fsp.readFile(DATA_FILE, 'utf8'));
-  } catch {
+    raw = await fsp.readFile(DATA_FILE, 'utf8');
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+
+  if (raw === null) {
+    // First run: start from the seed board.
     board = JSON.parse(await fsp.readFile(SEED_FILE, 'utf8'));
     await fsp.mkdir(path.dirname(DATA_FILE), { recursive: true });
     await persistNow();
+  } else {
+    try {
+      board = JSON.parse(raw);
+    } catch (err) {
+      // The board exists but is unreadable. Never silently reseed over it —
+      // that would destroy real work. Set it aside and refuse to start.
+      const aside = `${DATA_FILE}.corrupt-${now().replace(/[:.]/g, '-')}`;
+      await fsp.rename(DATA_FILE, aside);
+      console.error(`\n✖ ${DATA_FILE} is not valid JSON (${err.message}).`);
+      console.error(`  Your data has been preserved at:\n    ${aside}`);
+      console.error(`  Fix that file and rename it back, or delete it to start from the seed.\n`);
+      process.exit(1);
+    }
   }
+
   board.agents ||= [];
   board.activity ||= [];
   board.columns ||= [];
 }
 
 async function persistNow() {
+  clearTimeout(writeTimer);
+  writeTimer = null;
+  dirtySince = 0;
   const tmp = DATA_FILE + '.tmp';
   await fsp.writeFile(tmp, JSON.stringify(board, null, 2));
   await fsp.rename(tmp, DATA_FILE);
 }
 
+// Writes are coalesced, but never postponed indefinitely: a steady stream of
+// agent mutations must still reach disk, so a pending write is forced through
+// once it is MAX_WRITE_WAIT old.
+const WRITE_DEBOUNCE = 150;
+const MAX_WRITE_WAIT = 1000;
+let dirtySince = 0;
+
 function persist() {
+  const first = dirtySince || (dirtySince = Date.now());
   clearTimeout(writeTimer);
-  writeTimer = setTimeout(() => persistNow().catch(console.error), 150);
+  const wait = Math.max(0, Math.min(WRITE_DEBOUNCE, first + MAX_WRITE_WAIT - Date.now()));
+  writeTimer = setTimeout(() => persistNow().catch(console.error), wait);
 }
+
+// Don't lose the last change on redeploy, Stop, or Ctrl-C.
+let shuttingDown = false;
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    if (shuttingDown) process.exit(0);
+    shuttingDown = true;
+    clearTimeout(writeTimer);
+    persistNow()
+      .catch(console.error)
+      .finally(() => process.exit(0));
+  });
+}
+
+// A single bad request must never take the board offline.
+process.on('uncaughtException', (err) => console.error('uncaught:', err));
+process.on('unhandledRejection', (err) => console.error('unhandled rejection:', err));
 
 const now = () => new Date().toISOString();
 const uid = (p) => `${p}_${crypto.randomUUID().slice(0, 8)}`;
@@ -55,6 +104,15 @@ function logActivity(actor, action, detail, cardId = null) {
 function findColumn(id) {
   return board.columns.find((c) => c.id === id);
 }
+
+// Agents address sections by id or by title — accept either, reject neither-matches.
+function resolveColumn(idOrTitle) {
+  if (typeof idOrTitle !== 'string') return null;
+  return board.columns.find((c) => c.id === idOrTitle || c.title === idOrTitle) || null;
+}
+
+// Returned alongside "unknown column" errors so an agent can self-correct.
+const columnIndex = () => board.columns.map((c) => ({ id: c.id, title: c.title }));
 
 function findCard(id) {
   for (const column of board.columns) {
@@ -93,23 +151,123 @@ function sendJSON(res, status, body) {
   res.end(text);
 }
 
+const MAX_BODY_BYTES = 1e6;
+
+// Keys that would let a JSON body reach through an object into its prototype.
+const reviveSafely = (key, value) =>
+  key === '__proto__' || key === 'constructor' || key === 'prototype' ? undefined : value;
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let raw = '';
+    // Collect bytes, not strings: decoding each chunk separately mangles any
+    // multi-byte character that straddles a chunk boundary (ü, é, emoji…).
+    const chunks = [];
+    let bytes = 0;
+    let settled = false;
+
     req.on('data', (chunk) => {
-      raw += chunk;
-      if (raw.length > 1e6) reject(new Error('payload too large'));
+      if (settled) return;
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        settled = true;
+        req.destroy();
+        return reject(new Error('payload too large'));
+      }
+      chunks.push(chunk);
     });
     req.on('end', () => {
-      if (!raw) return resolve({});
+      if (settled) return;
+      settled = true;
+      if (!bytes) return resolve({});
       try {
-        resolve(JSON.parse(raw));
+        const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'), reviveSafely);
+        resolve(parsed && typeof parsed === 'object' ? parsed : {});
       } catch {
         reject(new Error('invalid JSON body'));
       }
     });
-    req.on('error', reject);
+    req.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
   });
+}
+
+/* -------------------------------------------------------------- validation */
+
+// Agents are programs: a wrong-shaped field must be rejected at the door, not
+// stored and then crash every browser rendering the board.
+const isPlainText = (v) => typeof v === 'string';
+const HEX_COLOR = /^#[0-9a-f]{3,8}$/i;
+
+class BadRequest extends Error {}
+
+function cleanTitle(value, fallback) {
+  if (value === undefined) return fallback;
+  if (!isPlainText(value)) throw new BadRequest('title must be a string');
+  const text = value.trim();
+  if (!text) throw new BadRequest('title must not be empty');
+  if (text.length > 500) throw new BadRequest('title must be 500 characters or fewer');
+  return text;
+}
+
+function cleanLabels(value) {
+  if (!Array.isArray(value)) throw new BadRequest('labels must be an array of strings');
+  if (!value.every(isPlainText)) throw new BadRequest('labels must be an array of strings');
+  return value.map((s) => s.trim()).filter(Boolean).slice(0, 20);
+}
+
+function cleanChecklist(value) {
+  if (!Array.isArray(value)) throw new BadRequest('checklist must be an array of {text, done}');
+  return value.map((item) => {
+    if (!item || typeof item !== 'object' || !isPlainText(item.text))
+      throw new BadRequest('each checklist item must be {text: string, done: boolean}');
+    return { text: item.text, done: !!item.done };
+  });
+}
+
+function cleanColor(value, fallback) {
+  if (value === undefined) return fallback;
+  // Anything but a plain hex colour is assigned straight into style.background
+  // in the browser, which would let an API client beacon out to any URL.
+  if (!isPlainText(value) || !HEX_COLOR.test(value.trim()))
+    throw new BadRequest('color must be a hex value like #4bc07a');
+  return value.trim();
+}
+
+function cleanIcon(value, fallback) {
+  if (value === undefined) return fallback;
+  if (!isPlainText(value)) throw new BadRequest('icon must be a string');
+  return [...value].slice(0, 3).join('');
+}
+
+function cleanDue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  if (!isPlainText(value) || !/^\d{4}-\d{2}-\d{2}$/.test(value))
+    throw new BadRequest('due must be a YYYY-MM-DD date or null');
+  return value;
+}
+
+// Applies the card fields present in `body`, validating each one.
+function applyCardFields(card, body) {
+  if ('title' in body) card.title = cleanTitle(body.title, card.title);
+  if ('description' in body) {
+    if (!isPlainText(body.description)) throw new BadRequest('description must be a string');
+    card.description = body.description.slice(0, 20000);
+  }
+  if ('assignee' in body) {
+    if (body.assignee !== null && !isPlainText(body.assignee)) throw new BadRequest('assignee must be a string or null');
+    card.assignee = body.assignee || null;
+  }
+  if ('labels' in body) card.labels = cleanLabels(body.labels);
+  if ('due' in body) card.due = cleanDue(body.due);
+  if ('status' in body) {
+    if (!isPlainText(body.status)) throw new BadRequest('status must be a string');
+    card.status = body.status;
+  }
+  if ('checklist' in body) card.checklist = cleanChecklist(body.checklist);
+  return card;
 }
 
 const MIME = {
@@ -176,10 +334,10 @@ route('PATCH', '/api/board', (req, res, _p, body) => {
 route('POST', '/api/columns', (req, res, _p, body) => {
   const column = {
     id: uid('col'),
-    title: body.title || 'New section',
-    color: body.color || '#8b93a7',
-    icon: body.icon || '📋',
-    wipLimit: body.wipLimit ?? null,
+    title: cleanTitle(body.title, 'New section'),
+    color: cleanColor(body.color, '#8b93a7'),
+    icon: cleanIcon(body.icon, '📋'),
+    wipLimit: Number.isInteger(body.wipLimit) ? body.wipLimit : null,
     cards: [],
   };
   board.columns.push(column);
@@ -192,9 +350,10 @@ route('POST', '/api/columns', (req, res, _p, body) => {
 route('PATCH', '/api/columns/:id', (req, res, p, body) => {
   const column = findColumn(p.id);
   if (!column) return sendJSON(res, 404, { error: 'column not found' });
-  for (const field of ['title', 'color', 'icon', 'wipLimit']) {
-    if (field in body) column[field] = body[field];
-  }
+  if ('title' in body) column.title = cleanTitle(body.title, column.title);
+  if ('color' in body) column.color = cleanColor(body.color, column.color);
+  if ('icon' in body) column.icon = cleanIcon(body.icon, column.icon);
+  if ('wipLimit' in body) column.wipLimit = Number.isInteger(body.wipLimit) ? body.wipLimit : null;
   if (Number.isInteger(body.position)) {
     const from = board.columns.indexOf(column);
     board.columns.splice(from, 1);
@@ -242,22 +401,30 @@ route('GET', '/api/cards/:id', (req, res, p) => {
 });
 
 route('POST', '/api/cards', (req, res, _p, body) => {
-  const column = findColumn(body.columnId) || board.columns.find((c) => c.title === body.column) || board.columns[0];
+  // A named-but-unknown section is a typo, not a request to file it anywhere.
+  const named = body.columnId ?? body.column;
+  const column = named === undefined || named === null ? board.columns[0] : resolveColumn(named);
+  if (named !== undefined && named !== null && !column)
+    return sendJSON(res, 400, { error: `unknown column: ${named}`, columns: columnIndex() });
   if (!column) return sendJSON(res, 400, { error: 'no column to add to' });
-  const card = {
-    id: uid('card'),
-    title: body.title || 'Untitled task',
-    description: body.description || '',
-    assignee: body.assignee || null,
-    labels: body.labels || [],
-    due: body.due || null,
-    status: body.status || 'open',
-    checklist: body.checklist || [],
-    comments: [],
-    createdBy: actorOf(req, body),
-    createdAt: now(),
-    updatedAt: now(),
-  };
+
+  const card = applyCardFields(
+    {
+      id: uid('card'),
+      title: 'Untitled task',
+      description: '',
+      assignee: null,
+      labels: [],
+      due: null,
+      status: 'open',
+      checklist: [],
+      comments: [],
+      createdBy: actorOf(req, body),
+      createdAt: now(),
+      updatedAt: now(),
+    },
+    body
+  );
   const at = Number.isInteger(body.position) ? body.position : column.cards.length;
   column.cards.splice(Math.max(0, Math.min(at, column.cards.length)), 0, card);
   logActivity(card.createdBy, 'created task', card.title, card.id);
@@ -272,13 +439,15 @@ route('PATCH', '/api/cards/:id', (req, res, p, body) => {
   const { card, column, index } = hit;
   const actor = actorOf(req, body);
 
-  for (const field of ['title', 'description', 'assignee', 'labels', 'due', 'status', 'checklist']) {
-    if (field in body) card[field] = body[field];
-  }
+  // Resolve the destination BEFORE mutating anything: a move to a section that
+  // doesn't exist must fail outright, not return 200 having quietly done nothing.
+  const named = body.columnId ?? body.column;
+  const target = named === undefined || named === null ? null : resolveColumn(named);
+  if (named !== undefined && named !== null && !target)
+    return sendJSON(res, 404, { error: `unknown column: ${named}`, columns: columnIndex() });
 
-  const target = body.columnId
-    ? findColumn(body.columnId) || board.columns.find((c) => c.title === body.columnId)
-    : null;
+  applyCardFields(card, body);
+
   if (target && (target !== column || Number.isInteger(body.position))) {
     column.cards.splice(index, 1);
     const at = Number.isInteger(body.position) ? body.position : target.cards.length;
@@ -326,8 +495,8 @@ route('POST', '/api/cards/:id/claim', (req, res, p, body) => {
 route('POST', '/api/cards/:id/comments', (req, res, p, body) => {
   const hit = findCard(p.id);
   if (!hit) return sendJSON(res, 404, { error: 'card not found' });
-  if (!body.text) return sendJSON(res, 400, { error: 'text is required' });
-  const comment = { id: uid('cm'), author: actorOf(req, body), text: body.text, ts: now() };
+  if (!isPlainText(body.text) || !body.text.trim()) return sendJSON(res, 400, { error: 'text is required' });
+  const comment = { id: uid('cm'), author: actorOf(req, body), text: body.text.slice(0, 20000), ts: now() };
   hit.card.comments.push(comment);
   hit.card.updatedAt = now();
   logActivity(comment.author, 'commented on', hit.card.title, hit.card.id);
@@ -338,25 +507,29 @@ route('POST', '/api/cards/:id/comments', (req, res, p, body) => {
 
 /* --- agents ------------------------------------------------------------ */
 
+// A finished task is not workload — an orchestrator routing by openTasks would
+// otherwise starve whichever agent has completed the most.
+const isOpenWork = (card) => card.status !== 'done';
+
 route('GET', '/api/agents', (req, res) => {
   const load = {};
   for (const column of board.columns) {
     for (const card of column.cards) {
-      if (card.assignee) load[card.assignee] = (load[card.assignee] || 0) + 1;
+      if (card.assignee && isOpenWork(card)) load[card.assignee] = (load[card.assignee] || 0) + 1;
     }
   }
   sendJSON(res, 200, board.agents.map((a) => ({ ...a, openTasks: load[a.id] || 0 })));
 });
 
 route('POST', '/api/agents', (req, res, _p, body) => {
-  if (!body.id) return sendJSON(res, 400, { error: 'id is required' });
+  if (!isPlainText(body.id) || !body.id.trim()) return sendJSON(res, 400, { error: 'id is required' });
   const existing = board.agents.find((a) => a.id === body.id);
-  const agent = existing || { id: body.id, createdAt: now() };
-  agent.name = body.name || agent.name || body.id;
-  agent.role = body.role || agent.role || 'agent';
-  agent.avatar = body.avatar || agent.avatar || '🤖';
-  agent.color = body.color || agent.color || '#6b7ce0';
-  agent.skills = body.skills || agent.skills || [];
+  const agent = existing || { id: body.id.trim(), createdAt: now() };
+  agent.name = cleanTitle(body.name, agent.name || agent.id);
+  agent.role = isPlainText(body.role) ? body.role : agent.role || 'agent';
+  agent.avatar = cleanIcon(body.avatar, agent.avatar || '🤖');
+  agent.color = cleanColor(body.color, agent.color || '#6b7ce0');
+  agent.skills = Array.isArray(body.skills) ? body.skills.filter(isPlainText) : agent.skills || [];
   agent.lastSeen = now();
   if (!existing) board.agents.push(agent);
   persist();
@@ -382,8 +555,25 @@ route('GET', '/api/activity', (req, res) => {
 
 /* ------------------------------------------------------------------ serve */
 
-const server = http.createServer(async (req, res) => {
-  const urlPath = new URL(req.url, 'http://x').pathname;
+// Every request goes through here inside a try/catch: no single malformed
+// request may be allowed to take the board offline for everyone.
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((err) => {
+    console.error(`${req.method} ${req.url} failed:`, err);
+    if (!res.headersSent) sendJSON(res, err instanceof BadRequest ? 400 : 500, { error: err.message });
+    else res.end();
+  });
+});
+
+async function handle(req, res) {
+  // `new URL()` throws on targets with an empty authority ("//", "///", "//?x").
+  // A browser will send those from nothing worse than a doubled slash in a link.
+  let urlPath;
+  try {
+    urlPath = new URL(req.url, 'http://x').pathname;
+  } catch {
+    return sendJSON(res, 400, { error: 'bad request target' });
+  }
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
@@ -420,8 +610,17 @@ const server = http.createServer(async (req, res) => {
   const match = routes.find((r) => r.method === req.method && r.regex.test(urlPath));
   if (!match) return sendJSON(res, 404, { error: `no route for ${req.method} ${urlPath}` });
 
+  // decodeURIComponent throws URIError on a stray '%' — an id an agent built by
+  // string interpolation can easily contain one.
+  const decode = (s) => {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      return s;
+    }
+  };
   const values = urlPath.match(match.regex).slice(1);
-  const params = Object.fromEntries(match.keys.map((k, i) => [k, decodeURIComponent(values[i])]));
+  const params = Object.fromEntries(match.keys.map((k, i) => [k, decode(values[i])]));
 
   try {
     const body = req.method === 'GET' ? {} : await readBody(req);
@@ -429,7 +628,7 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     sendJSON(res, 400, { error: err.message });
   }
-});
+}
 
 await loadBoard();
 server.listen(PORT, () => {

@@ -29,7 +29,9 @@ Escalate instead of guessing: comment with a question and set `{"status":"blocke
 
 ### Board
 - `GET /api/board` — full board (columns, cards, agents, activity)
-- `GET /api/events` — Server-Sent Events; a `board` event fires on every change
+- `GET /api/events` — Server-Sent Events; a `board` event fires on every change.
+  `EventSource` cannot send headers, so on a key-protected board authenticate with
+  `?key=<API_KEY>` instead. Be aware the key then appears in server access logs.
 
 ### Cards
 - `GET /api/cards?assignee=&column=&label=&status=&q=` — flat, filtered list (`column` accepts id or title)
@@ -42,13 +44,24 @@ Escalate instead of guessing: comment with a question and set `{"status":"blocke
 
 `status` is free-form; the UI styles `open`, `in_progress` (blue bar), `blocked` (red bar), `done` (struck through).
 
+**Field shapes are enforced.** `labels` must be an array of strings, `checklist` an array of
+`{text, done}`, `due` a `YYYY-MM-DD` string or `null`, `color` a hex value. A wrong shape returns
+`400` with a message rather than being stored.
+
+**Naming a section that doesn't exist is an error, not a default.** `POST` returns `400` and `PATCH`
+returns `404`, each listing the real sections in a `columns` field so you can correct yourself. Only a
+request that names no section at all falls back to the first one. Get the ids from `GET /api/board`;
+the starter board uses `col_backlog`, `col_projects`, `col_sales`, `col_weekly`, `col_focus`,
+`col_completed`, `col_admin`. Section titles work too.
+
 ### Sections (columns)
 - `POST /api/columns` — `{title, color, icon, wipLimit}`
 - `PATCH /api/columns/:id` — `{title, color, icon, position}`
 - `DELETE /api/columns/:id`
 
 ### Team
-- `GET /api/agents` — includes `openTasks` per member
+- `GET /api/agents` — includes `openTasks` per member (assigned cards whose `status` is not `done`,
+  so the number goes back down as work finishes and is safe to route by)
 - `POST /api/agents` — `{id, name, role, avatar, skills[], color}` (upsert — also use it as a heartbeat)
 - `DELETE /api/agents/:id`
 
@@ -86,7 +99,8 @@ curl -X PATCH $BOARD/api/cards/$CARD -H 'X-Actor: research' \
 React to changes instead of polling:
 
 ```js
-const es = new EventSource(`${BOARD}/api/events`);
+// EventSource can't set headers — pass the key in the query string if the board has one.
+const es = new EventSource(`${BOARD}/api/events` + (KEY ? `?key=${encodeURIComponent(KEY)}` : ''));
 es.addEventListener('board', (e) => {
   const board = JSON.parse(e.data);
   const mine = board.columns.flatMap(c => c.cards).filter(c => c.assignee === 'research' && c.status === 'open');
