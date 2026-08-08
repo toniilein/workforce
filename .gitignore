@@ -7,3 +7,4 @@ node_modules/
 # To snapshot it deliberately: git add -f data/board.json
 data/board.json
 data/board.json.tmp
+data/board.backup-*.json
