@@ -19,17 +19,35 @@ Then open http://localhost:3000
 - **Live sync** — every browser and agent sees changes immediately over Server-Sent Events.
 - **REST API** — everything above is scriptable. See [AGENTS.md](AGENTS.md).
 
-## Keyboard / mouse
+Sections out of the box: **Todo → Doing → Blocked → Done**.
+
+## Desktop
 
 | Action | How |
 | --- | --- |
 | Add a task | `+` at the bottom of a section, Enter to save |
 | Move a task | drag the card |
 | Open a task | click it |
+| Set who's responsible | click the avatar on the card (or the Assignee field in the card) |
 | Rename a section | double-click its header |
 | Recolour / delete a section | right-click its header |
 | Add a section | `+` at the right edge of the board |
 | Close any panel | `Esc` |
+
+## On a phone
+
+The board switches to a one-section-per-screen layout below 700 px.
+
+| Action | How |
+| --- | --- |
+| Change section | swipe sideways, or tap a section chip at the top |
+| Move a task | **press and hold** the card, then drag it onto a section chip |
+| Set who's responsible | tap the avatar on the card — picker slides up from the bottom |
+| Open a task | tap it (full-screen) |
+| Add a section | `+` at the end of the chip strip |
+
+Press-and-hold is required because browsers never fire HTML5 drag events on a
+touch screen — without it the board would be read-only on a phone.
 
 ## Data
 
@@ -47,6 +65,18 @@ It's plain JSON, so a copy is a backup.
 repo and this repo is public** — whatever tasks are in the seed are readable by anyone. Replace the seed
 with generic examples if that isn't what you want. To snapshot your real board deliberately:
 `git add -f data/board.json`.
+
+## Running it without a local machine
+
+GitHub stores the code but cannot run it — GitHub Pages only serves static files, and this is a Node
+server. Two ways to get a working URL:
+
+**GitHub Codespaces** (inside GitHub, nothing installed locally): on the repo page press **Code →
+Codespaces → Create codespace on main**. `.devcontainer/devcontainer.json` starts the server and
+forwards port 3000 automatically. Under the **Ports** tab, set port 3000 to **Public** to get a URL
+that works on your phone. Codespaces stop when idle, so this is for working on it, not for hosting it.
+
+**Replit** (below) is the one to use for a board that stays up.
 
 ## Deploying to Replit
 

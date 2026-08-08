@@ -297,7 +297,173 @@ code { background: #f2f3f5; padding: 1px 5px; border-radius: 4px; font-size: 12p
 .scrim { position: fixed; inset: 0; background: rgba(20, 25, 35, .18); z-index: 30; }
 .scrim[hidden] { display: none; }
 
-@media (max-width: 640px) {
-  .topbar-actions input[type="search"] { width: 110px; }
-  .board { padding-right: 8px; }
+/* ---------------------------------------------------------------- mobile */
+
+/* Section tabs — the phone replacement for seeing every column at once. */
+.sectiontabs { display: none; }
+
+@media (max-width: 700px) {
+  :root { --topbar-h: 48px; --tabs-h: 42px; }
+
+  .topbar { padding: 0 10px; gap: 8px; }
+  .brand { font-size: 14px; }
+  .brand span:not(.brand-dot) { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-actions { gap: 6px; }
+  .topbar-actions input[type="search"] { width: 34px; padding: 0 8px; transition: width .18s ease; }
+  .topbar-actions input[type="search"]:focus { width: 150px; }
+  .topbar-actions select { max-width: 108px; }
+  /* Labels collapse to their icon; the emoji is the whole button on a phone. */
+  #btn-team, #btn-activity { font-size: 0; padding: 0 9px; }
+  #btn-team::before { content: "👥"; font-size: 15px; }
+  #btn-activity::before { content: "⚡"; font-size: 15px; }
+
+  .sectiontabs {
+    display: flex;
+    gap: 6px;
+    height: var(--tabs-h);
+    align-items: center;
+    padding: 0 10px;
+    overflow-x: auto;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: var(--topbar-h);
+    z-index: 15;
+    scrollbar-width: none;
+  }
+  .sectiontabs::-webkit-scrollbar { display: none; }
+  .sectiontab {
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 20px;
+    height: 28px;
+    padding: 0 12px;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12.5px;
+    opacity: .45;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .sectiontab.active { opacity: 1; }
+  /* Drop a dragged card straight onto a tab to send it to that section. */
+  .sectiontab.tab-over { opacity: 1; transform: scale(1.08); box-shadow: 0 0 0 3px rgba(255, 255, 255, .9), var(--shadow-lg); }
+  .sectiontab .n { background: rgba(255, 255, 255, .3); border-radius: 10px; padding: 0 6px; font-size: 11px; }
+
+  /* One section fills the screen; swipe sideways for the next. */
+  .board {
+    height: calc(100vh - var(--topbar-h) - var(--tabs-h));
+    height: calc(100dvh - var(--topbar-h) - var(--tabs-h));
+    padding-right: 0;
+    gap: 0;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+  }
+  .column {
+    flex: 0 0 100vw;
+    width: 100vw;
+    scroll-snap-align: start;
+    background: transparent;
+  }
+  .col-head { height: 44px; padding: 0 16px; }
+  .col-body { padding: 10px 12px 90px; gap: 10px; }
+
+  /* Comfortable thumb targets. */
+  .card { padding: 14px 14px; border-radius: 10px; }
+  .card-title { font-size: 15px; padding-right: 34px; }
+  .avatar { width: 26px; height: 26px; top: 11px; right: 11px; font-size: 13px; }
+  .add-card { width: 38px; height: 38px; font-size: 20px; }
+  .add-column { display: none; } /* use the + in the section tab strip instead */
+
+  .drawer {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    padding: 12px 16px 28px;
+    border-radius: 0;
+  }
+  .d-row { grid-template-columns: 80px 1fr; }
+  .d-row select, .d-row input, .checklist-add input, .agent-form input, .apikey input { height: 38px; font-size: 16px; }
+  .d-title { font-size: 17px; }
+  .d-desc, .comment-add textarea { font-size: 16px; } /* ≥16px stops iOS zooming on focus */
+  .icon-btn { padding: 8px 10px; font-size: 17px; }
+  .checklist li { padding: 3px 0; }
+  .checklist input[type="checkbox"] { width: 20px; height: 20px; }
+  .scrim { display: none; }
+}
+
+/* ------------------------------------------------- responsible-person menu */
+
+.assign-menu {
+  position: fixed;
+  z-index: 70;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--line);
+  padding: 6px;
+  min-width: 210px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.assign-menu[hidden] { display: none; }
+.assign-menu .head {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  color: var(--muted);
+  padding: 6px 8px 4px;
+}
+.assign-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  padding: 8px;
+  text-align: left;
+}
+.assign-option:hover { background: #f4f5f8; }
+.assign-option.current { background: #eef1fb; font-weight: 600; }
+.assign-option .avatar { position: static; width: 24px; height: 24px; font-size: 12px; flex: 0 0 24px; }
+.assign-option .sub { color: var(--muted); font-size: 11.5px; }
+
+@media (max-width: 700px) {
+  .assign-menu {
+    left: 0 !important;
+    right: 0;
+    bottom: 0;
+    top: auto !important;
+    width: 100%;
+    min-width: 0;
+    border-radius: 16px 16px 0 0;
+    padding: 10px 10px 24px;
+    max-height: 70dvh;
+  }
+  .assign-option { padding: 12px 10px; }
+  .assign-option .avatar { width: 30px; height: 30px; flex-basis: 30px; font-size: 14px; }
+}
+
+/* A card being dragged by finger follows the touch point. */
+.card.touch-ghost {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  width: min(88vw, 320px);
+  box-shadow: 0 12px 30px rgba(30, 40, 60, .3);
+  transform: rotate(1.5deg) scale(1.02);
+  opacity: .96;
+}
+.card.touch-source { opacity: .3; }
+.column.touch-over .col-head { box-shadow: inset 0 -3px 0 rgba(255, 255, 255, .85); }
+
+/* Long-press feedback before a drag starts. */
+.card.press { transform: scale(.98); transition: transform .12s ease; }
+
+@media (max-width: 380px) {
+  .topbar-actions select { max-width: 84px; }
 }

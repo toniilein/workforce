@@ -84,14 +84,251 @@ function cardNode(card, column) {
   if (comments.length) meta.appendChild(el('span', 'badge', `💬 ${comments.length}`));
   if (meta.childElementCount) node.appendChild(meta);
 
-  node.addEventListener('click', () => openCard(card.id));
+  node.addEventListener('click', (e) => {
+    if (e.target.closest('.avatar')) return; // the avatar is the assignee picker
+    if (node.dataset.suppressClick) return; // a touch-drag just ended here
+    openCard(card.id);
+  });
   node.addEventListener('dragstart', (e) => {
     node.classList.add('dragging');
     e.dataTransfer.setData('text/plain', card.id);
     e.dataTransfer.effectAllowed = 'move';
   });
   node.addEventListener('dragend', () => node.classList.remove('dragging'));
+
+  node.querySelector('.avatar').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openAssignMenu(card, e.currentTarget);
+  });
+
+  enableTouchDrag(node, card);
   return node;
+}
+
+/* ------------------------------------------- who is responsible (quick pick) */
+
+function openAssignMenu(card, anchor) {
+  const menu = $('#assign-menu');
+  menu.innerHTML = '';
+  menu.appendChild(el('div', 'head', 'Responsible'));
+
+  const choose = (id) => {
+    closeAssignMenu();
+    api('PATCH', `/api/cards/${card.id}`, { assignee: id });
+  };
+
+  const none = el('button', 'assign-option' + (card.assignee ? '' : ' current'));
+  none.append(el('div', 'avatar empty', '👤'), el('span', null, 'Nobody yet'));
+  none.addEventListener('click', () => choose(null));
+  menu.appendChild(none);
+
+  for (const agent of board.agents) {
+    const option = el('button', 'assign-option' + (card.assignee === agent.id ? ' current' : ''));
+    const av = el('div', 'avatar', agent.avatar || '🤖');
+    av.style.background = safeColor(agent.color, '#6b7ce0');
+    const who = el('div');
+    who.appendChild(el('div', null, agent.name));
+    who.appendChild(el('div', 'sub', agent.role));
+    option.append(av, who);
+    option.addEventListener('click', () => choose(agent.id));
+    menu.appendChild(option);
+  }
+
+  menu.hidden = false;
+  // Desktop: anchor to the avatar, nudged back on screen if it would overflow.
+  const box = anchor.getBoundingClientRect();
+  const size = menu.getBoundingClientRect();
+  menu.style.top = `${Math.min(box.bottom + 6, window.innerHeight - size.height - 8)}px`;
+  menu.style.left = `${Math.max(8, Math.min(box.left - 170, window.innerWidth - size.width - 8))}px`;
+  setTimeout(() => document.addEventListener('pointerdown', closeAssignMenuOnce, { once: true }), 0);
+}
+
+function closeAssignMenu() {
+  $('#assign-menu').hidden = true;
+}
+function closeAssignMenuOnce(e) {
+  if (e.target.closest('#assign-menu')) {
+    document.addEventListener('pointerdown', closeAssignMenuOnce, { once: true });
+    return;
+  }
+  closeAssignMenu();
+}
+
+/* -------------------------------------------------------- drag with a finger */
+
+// HTML5 drag & drop never fires on touch screens, so on a phone the board would
+// be read-only without this: press and hold a card, then drag it.
+const LONG_PRESS_MS = 260;
+const SLOP_PX = 10;
+
+function enableTouchDrag(node, card) {
+  let timer = null;
+  let ghost = null;
+  let start = null;
+  let dragging = false;
+
+  const cancelPress = () => {
+    clearTimeout(timer);
+    timer = null;
+    node.classList.remove('press');
+  };
+
+  const begin = () => {
+    dragging = true;
+    node.classList.remove('press');
+    node.classList.add('touch-source');
+    // Mandatory scroll-snap yanks the board back to the current section, which
+    // would make the edge-scroll below do nothing. Suspend it for the drag.
+    $('#board').style.scrollSnapType = 'none';
+    const box = node.getBoundingClientRect();
+    ghost = node.cloneNode(true);
+    ghost.classList.add('touch-ghost');
+    ghost.classList.remove('touch-source');
+    ghost.style.width = `${box.width}px`;
+    document.body.appendChild(ghost);
+    moveGhost(start.x, start.y);
+    if (navigator.vibrate) navigator.vibrate(8);
+  };
+
+  const moveGhost = (x, y) => {
+    ghost.style.left = `${x - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${y - 28}px`;
+  };
+
+  node.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.pointerType === 'mouse') return; // mouse keeps native drag & drop
+      if (e.target.closest('.avatar')) return;
+      start = { x: e.clientX, y: e.clientY };
+      node.classList.add('press');
+      timer = setTimeout(begin, LONG_PRESS_MS);
+    },
+    { passive: true }
+  );
+
+  node.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!start) return;
+      if (!dragging) {
+        // Moved before the hold completed → the user is scrolling, not dragging.
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > SLOP_PX) cancelPress();
+        return;
+      }
+      e.preventDefault(); // hold the page still while dragging
+      moveGhost(e.clientX, e.clientY);
+      highlightColumnAt(e.clientX, e.clientY);
+      edgeScroll(e.clientX);
+    },
+    { passive: false }
+  );
+
+  const finish = (e) => {
+    cancelPress();
+    if (!dragging) {
+      start = null;
+      return;
+    }
+    dragging = false;
+    start = null;
+    ghost?.remove();
+    ghost = null;
+    node.classList.remove('touch-source');
+    clearColumnHighlight();
+    stopEdgeScroll();
+    $('#board').style.scrollSnapType = '';
+
+    // Suppress the click that follows the release, so we don't open the card.
+    node.dataset.suppressClick = '1';
+    setTimeout(() => delete node.dataset.suppressClick, 300);
+
+    // Dropping onto a section tab is the reliable way to cross sections on a
+    // phone — no scrolling, every section reachable, always visible.
+    const tab = elementUnder(e.clientX, e.clientY)?.closest('.sectiontab');
+    if (tab?.dataset.id) {
+      api('PATCH', `/api/cards/${card.id}`, { columnId: tab.dataset.id });
+      return;
+    }
+
+    // Otherwise the section it was released over, falling back to the one on
+    // screen (released past the viewport edge, or over the topbar).
+    const target = columnAt(e.clientX, e.clientY) || $(`.column[data-id="${activeSectionId()}"]`);
+    if (!target) return;
+    const column = board.columns.find((c) => c.id === target.dataset.id);
+    if (!column) return;
+    const position = dropPosition(target.querySelector('.col-body'), column, e.clientY, card.id);
+    api('PATCH', `/api/cards/${card.id}`, { columnId: column.id, position });
+  };
+
+  node.addEventListener('pointerup', finish);
+  node.addEventListener('pointercancel', () => {
+    cancelPress();
+    dragging = false;
+    start = null;
+    ghost?.remove();
+    ghost = null;
+    node.classList.remove('touch-source');
+    clearColumnHighlight();
+    stopEdgeScroll();
+    $('#board').style.scrollSnapType = '';
+  });
+}
+
+// The ghost sits under the finger, so hide it before asking what's underneath.
+function elementUnder(x, y) {
+  const ghost = document.querySelector('.touch-ghost');
+  if (ghost) ghost.style.display = 'none';
+  const under = document.elementFromPoint(x, y);
+  if (ghost) ghost.style.display = '';
+  return under;
+}
+
+function columnAt(x, y) {
+  return elementUnder(x, y)?.closest('.column') || null;
+}
+
+function highlightColumnAt(x, y) {
+  clearColumnHighlight();
+  const under = elementUnder(x, y);
+  const tab = under?.closest('.sectiontab');
+  if (tab) return tab.classList.add('tab-over');
+  under?.closest('.column')?.classList.add('touch-over');
+}
+
+function clearColumnHighlight() {
+  document.querySelectorAll('.column.touch-over').forEach((c) => c.classList.remove('touch-over'));
+  document.querySelectorAll('.sectiontab.tab-over').forEach((t) => t.classList.remove('tab-over'));
+}
+
+// Holding a dragged card near the screen edge pages to the neighbouring section.
+// A rAF loop rather than setInterval: it stays in step with the compositor and
+// isn't subject to timer throttling.
+let edgeFrame = null;
+let edgeDirection = 0;
+
+function edgeScroll(x) {
+  const near = 56;
+  edgeDirection = x < near ? -1 : x > window.innerWidth - near ? 1 : 0;
+  if (!edgeDirection) return stopEdgeScroll();
+  if (edgeFrame) return;
+
+  const step = () => {
+    if (!edgeDirection) return stopEdgeScroll();
+    const strip = $('#board');
+    const before = strip.scrollLeft;
+    strip.scrollLeft = before + edgeDirection * 12;
+    // Hit the end of the board — nothing more to scroll towards.
+    if (strip.scrollLeft === before) return stopEdgeScroll();
+    edgeFrame = requestAnimationFrame(step);
+  };
+  edgeFrame = requestAnimationFrame(step);
+}
+
+function stopEdgeScroll() {
+  if (edgeFrame) cancelAnimationFrame(edgeFrame);
+  edgeFrame = null;
+  edgeDirection = 0;
 }
 
 function columnNode(column) {
@@ -225,20 +462,73 @@ function render() {
 
   const addCol = el('button', 'add-column', '+');
   addCol.title = 'Add section';
-  addCol.addEventListener('click', async () => {
-    const title = prompt('Section name');
-    if (!title) return;
-    const palette = ['#3d4451', '#f5c343', '#f0a441', '#ec5f8f', '#e2504f', '#4bc07a', '#9b7bd4', '#4f8ef7'];
-    await api('POST', '/api/columns', { title, color: palette[board.columns.length % palette.length] });
-  });
+  addCol.addEventListener('click', addSection);
   root.appendChild(addCol);
   root.scrollLeft = scroll;
 
   $('#board-title').textContent = board.title || 'Workforce';
+  renderSectionTabs();
   renderAssigneeFilter();
   if (openCardId && !$('#drawer').hidden) renderDrawer();
   if (!$('#team').hidden) renderTeam();
   if (!$('#activity').hidden) renderActivity();
+}
+
+// On a phone one section fills the screen, so the tab strip is how you move
+// between them (and shows the counts you'd otherwise lose).
+function renderSectionTabs() {
+  const strip = $('#sectiontabs');
+  strip.innerHTML = '';
+  for (const column of board.columns) {
+    const tab = el('button', 'sectiontab');
+    tab.style.background = safeColor(column.color, '#8b93a7');
+    tab.dataset.id = column.id;
+    tab.append(
+      el('span', null, `${column.icon || ''} ${column.title}`.trim()),
+      el('span', 'n', String(asArray(column.cards).length))
+    );
+    tab.addEventListener('click', () => {
+      const node = $(`.column[data-id="${column.id}"]`);
+      // Scroll the board itself, never scrollIntoView — that can scroll ancestors
+      // too and fight the board's own scroll handler.
+      if (node) $('#board').scrollTo({ left: node.offsetLeft, behavior: 'smooth' });
+      markActiveTab(column.id);
+    });
+    strip.appendChild(tab);
+  }
+
+  const add = el('button', 'sectiontab', '+');
+  add.style.background = '#8b93a7';
+  add.addEventListener('click', addSection);
+  strip.appendChild(add);
+
+  markActiveTab(activeSectionId());
+}
+
+function activeSectionId() {
+  const root = $('#board');
+  const columns = [...root.querySelectorAll('.column')];
+  const hit = columns.find((c) => c.offsetLeft + c.offsetWidth > root.scrollLeft + 10);
+  return hit?.dataset.id || board.columns[0]?.id;
+}
+
+function markActiveTab(id) {
+  document.querySelectorAll('.sectiontab').forEach((t) => t.classList.toggle('active', t.dataset.id === id));
+  const strip = $('#sectiontabs');
+  const active = strip.querySelector('.sectiontab.active');
+  if (!active) return;
+  // Nudge the strip only, and only when the active tab is actually out of view.
+  const left = active.offsetLeft - strip.offsetLeft;
+  const right = left + active.offsetWidth;
+  if (left < strip.scrollLeft) strip.scrollLeft = Math.max(0, left - 12);
+  else if (right > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = right - strip.clientWidth + 12;
+}
+
+async function addSection() {
+  const title = prompt('Section name');
+  if (!title) return;
+  const palette = ['#3d4451', '#f5c343', '#f0a441', '#ec5f8f', '#e2504f', '#4bc07a', '#9b7bd4', '#4f8ef7'];
+  await api('POST', '/api/columns', { title, color: palette[board.columns.length % palette.length] });
 }
 
 function renderAssigneeFilter() {
@@ -475,6 +765,17 @@ $('#scrim').addEventListener('click', () => {
   closeDrawer();
   closePanels();
 });
+
+// Keep the tab strip in step with a sideways swipe.
+let tabSyncTimer = null;
+$('#board').addEventListener(
+  'scroll',
+  () => {
+    clearTimeout(tabSyncTimer);
+    tabSyncTimer = setTimeout(() => markActiveTab(activeSectionId()), 60);
+  },
+  { passive: true }
+);
 document.querySelectorAll('[data-close]').forEach((btn) =>
   btn.addEventListener('click', () => {
     $(`#${btn.dataset.close}`).hidden = true;

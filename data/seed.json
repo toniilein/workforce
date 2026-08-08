@@ -1,107 +1,42 @@
 {
   "title": "Workforce",
   "agents": [
-    { "id": "toni", "name": "Toni", "role": "human", "avatar": "🧑", "color": "#2f3542", "skills": ["decisions", "sales"] },
+    { "id": "toni", "name": "Toni", "role": "human", "avatar": "🧑", "color": "#2f3542", "skills": ["decisions", "priorities"] },
     { "id": "research", "name": "Research Agent", "role": "agent", "avatar": "🔎", "color": "#4f8ef7", "skills": ["web-research", "summaries", "due-diligence"] },
     { "id": "writer", "name": "Writer Agent", "role": "agent", "avatar": "✍️", "color": "#8b5cf6", "skills": ["decks", "copy", "emails"] },
     { "id": "ops", "name": "Ops Agent", "role": "agent", "avatar": "⚙️", "color": "#f0a441", "skills": ["admin", "filings", "expenses"] }
   ],
   "columns": [
     {
-      "id": "col_backlog",
-      "title": "Backlog",
+      "id": "col_todo",
+      "title": "Todo",
       "color": "#3d4451",
-      "icon": "⏸",
+      "icon": "📥",
       "wipLimit": null,
       "cards": [
-        { "id": "card_eez", "title": "Apply to Ethereum Economic Zone", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_stc", "title": "stc ending", "description": "", "assignee": "research", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" }
+        {
+          "id": "card_welcome",
+          "title": "Tap a card to open it, tap the avatar to set who is responsible",
+          "description": "This is the task brief. Whatever you write here is what an AI agent reads before starting: context, links, and what \"done\" means.\n\nOn a phone: press and hold a card to drag it to another section, or swipe sideways to change section.",
+          "assignee": null,
+          "labels": ["start here"],
+          "due": null,
+          "status": "open",
+          "checklist": [
+            { "text": "Open this card", "done": true },
+            { "text": "Set someone as responsible", "done": false },
+            { "text": "Move it to Doing", "done": false }
+          ],
+          "comments": [],
+          "createdBy": "toni",
+          "createdAt": "2026-08-08T09:00:00.000Z",
+          "updatedAt": "2026-08-08T09:00:00.000Z"
+        }
       ]
     },
-    {
-      "id": "col_projects",
-      "title": "PROJECTS",
-      "color": "#f5c343",
-      "icon": "🎮",
-      "wipLimit": null,
-      "cards": [
-        { "id": "card_cio", "title": "CIO application to Charity Commission", "description": "", "assignee": "ops", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_pookie", "title": "PookieScroll Review", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" }
-      ]
-    },
-    {
-      "id": "col_sales",
-      "title": "SALES",
-      "color": "#f0a441",
-      "icon": "🧺",
-      "wipLimit": null,
-      "cards": [
-        { "id": "card_slides", "title": "Create slides for Scott Petty VF CTO for Sri Lanka pilot", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_wise", "title": "Delete Wise cards and refresh", "description": "", "assignee": "ops", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_visa", "title": "apply for Saudi VISA", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_riyadh", "title": "Book Riyadh hotel", "description": "", "assignee": "toni", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" }
-      ]
-    },
-    {
-      "id": "col_weekly",
-      "title": "Weekly",
-      "color": "#ec5f8f",
-      "icon": "🗓",
-      "wipLimit": null,
-      "cards": [
-        { "id": "card_ava", "title": "Reply to Avalanche", "description": "", "assignee": "writer", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_lions", "title": "connect lionscraft replit with io domain and put webflow on free tier", "description": "", "assignee": "toni", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_ntt", "title": "apply NTT Startup", "description": "", "assignee": "ops", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_safe", "title": "Julian SAFE", "description": "", "assignee": "toni", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_family", "title": "Search for Family Office", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_seena", "title": "Seena followup on Risk", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_clearing", "title": "Check how Clearing House can be integrated into RISK", "description": "", "assignee": "research", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" }
-      ]
-    },
-    {
-      "id": "col_focus",
-      "title": "Focus",
-      "color": "#e2504f",
-      "icon": "🚩",
-      "wipLimit": null,
-      "cards": [
-        { "id": "card_lido", "title": "Check what to do with Lido", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_terra", "title": "Send a PitchIdea to Terra", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_hakuhodo", "title": "Send Hakuhodo LOI", "description": "", "assignee": "writer", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_matthew", "title": "Send to Matthew pack", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_scottpack", "title": "need pack for scott petty", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_website", "title": "website with solution and goal", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_roles", "title": "clear roles and goal", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_product", "title": "clear product description", "description": "", "assignee": null, "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" }
-      ]
-    },
-    {
-      "id": "col_completed",
-      "title": "Completed",
-      "color": "#4bc07a",
-      "icon": "✅",
-      "wipLimit": null,
-      "cards": []
-    },
-    {
-      "id": "col_admin",
-      "title": "Admin",
-      "color": "#9b7bd4",
-      "icon": "💻",
-      "wipLimit": null,
-      "cards": [
-        { "id": "card_cit", "title": "CIT - 30 Nov", "description": "", "assignee": "ops", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_adicomr", "title": "Adico MR check", "description": "", "assignee": "ops", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_adicofile", "title": "Adico File C/S", "description": "", "assignee": "ops", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_steuer", "title": "Steuererklärung 2025", "description": "", "assignee": "toni", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_gmbh", "title": "GmbH Closure", "description": "", "assignee": "toni", "labels": ["admin"], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_dz", "title": "Expense DZ Bank!", "description": "", "assignee": "toni", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_zagreb", "title": "expense zagreb", "description": "", "assignee": "toni", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_swiss", "title": "Expense Switzerland", "description": "", "assignee": "toni", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_phone", "title": "Expense Phone", "description": "", "assignee": "toni", "labels": [], "due": null, "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
-        { "id": "card_miro", "title": "Move Miro A43 to Lionscraft", "description": "", "assignee": null, "labels": [], "due": "2026-11-09", "status": "open", "checklist": [], "comments": [], "createdBy": "toni", "createdAt": "2026-08-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" }
-      ]
-    }
+    { "id": "col_doing", "title": "Doing", "color": "#4f8ef7", "icon": "🚧", "wipLimit": null, "cards": [] },
+    { "id": "col_blocked", "title": "Blocked", "color": "#e2504f", "icon": "⛔", "wipLimit": null, "cards": [] },
+    { "id": "col_done", "title": "Done", "color": "#4bc07a", "icon": "✅", "wipLimit": null, "cards": [] }
   ],
   "activity": []
 }
