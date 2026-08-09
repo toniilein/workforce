@@ -10,15 +10,17 @@
 <body>
 
 <header class="topbar">
-  <div class="brand"><span class="brand-dot"></span><span id="board-title">Workforce</span></div>
+  <div class="brand"><span id="board-title">Workforce</span></div>
   <div class="topbar-actions">
     <input id="search" type="search" placeholder="Filter tasks…" />
-    <select id="filter-assignee"><option value="">All members</option></select>
-    <button id="btn-team" class="ghost">👥 Team</button>
-    <button id="btn-activity" class="ghost">⚡ Activity</button>
-    <span id="live" class="live" title="Live connection">●</span>
+    <button id="btn-team" class="ghost">Team</button>
+    <button id="btn-activity" class="ghost">Activity</button>
+    <span id="live" class="live" title="Live connection"></span>
   </div>
 </header>
+
+<!-- who has how many open tasks — click a person to filter the board -->
+<nav id="workload" class="workload" aria-label="Workload"></nav>
 
 <nav id="sectiontabs" class="sectiontabs" aria-label="Sections"></nav>
 
@@ -78,7 +80,6 @@
   <div class="agent-form">
     <input id="a-id" placeholder="id (e.g. research)" />
     <input id="a-name" placeholder="display name" />
-    <input id="a-avatar" placeholder="emoji" maxlength="4" />
     <input id="a-role" placeholder="role (agent / human)" />
     <button id="a-add" class="primary small">Add</button>
   </div>

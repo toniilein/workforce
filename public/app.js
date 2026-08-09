@@ -45,19 +45,44 @@ const asArray = (v) => (Array.isArray(v) ? v : []);
 const HEX_COLOR = /^#[0-9a-f]{3,8}$/i;
 const safeColor = (v, fallback) => (typeof v === 'string' && HEX_COLOR.test(v.trim()) ? v.trim() : fallback);
 
+// People render as initials on their colour — calm and readable at any size.
+function initials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return (((parts[0] || '')[0] || '') + ((parts[1] || '')[0] || '')).toUpperCase() || '?';
+}
+
 function avatarNode(assigneeId) {
   const agent = agentById(assigneeId);
   const node = el('div', 'avatar' + (agent ? '' : ' empty'));
-  node.textContent = agent ? agent.avatar || '🤖' : '👤';
+  if (agent) {
+    node.textContent = initials(agent.name);
+    node.style.background = safeColor(agent.color, '#6b7ce0');
+  }
   node.title = agent ? `${agent.name} (${agent.role})` : 'Unassigned';
-  if (agent) node.style.background = safeColor(agent.color, '#6b7ce0');
   return node;
+}
+
+// Tiny monochrome glyphs for card metadata — static markup, never user input.
+const GLYPHS = {
+  check:
+    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="3"/><path d="M5.2 8.3l2 2 3.6-4.4"/></svg>',
+  comment:
+    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 10a2 2 0 0 1-2 2H6.2L2.5 14.5V4.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2z"/></svg>',
+};
+function glyph(name) {
+  const span = el('span', 'micon');
+  span.innerHTML = GLYPHS[name];
+  return span;
 }
 
 const filterActive = () => Boolean(filter.text || filter.assignee);
 
 function matchesFilter(card) {
-  if (filter.assignee && card.assignee !== filter.assignee) return false;
+  if (filter.assignee === '__none__') {
+    if (card.assignee) return false;
+  } else if (filter.assignee && card.assignee !== filter.assignee) {
+    return false;
+  }
   if (filter.text) {
     const hay = `${card.title} ${card.description || ''} ${asArray(card.labels).join(' ')}`.toLowerCase();
     if (!hay.includes(filter.text)) return false;
@@ -76,12 +101,20 @@ function cardNode(card, column) {
   const meta = el('div', 'card-meta');
   for (const label of asArray(card.labels)) meta.appendChild(el('span', 'label', String(label)));
   if (card.due) {
-    meta.appendChild(el('span', 'due' + (isOverdue(card.due) ? ' overdue' : ''), `📅 ${formatDate(card.due)}`));
+    meta.appendChild(el('span', 'due' + (isOverdue(card.due) ? ' overdue' : ''), formatDate(card.due)));
   }
   const checks = asArray(card.checklist);
-  if (checks.length) meta.appendChild(el('span', 'badge', `☑ ${checks.filter((c) => c && c.done).length}/${checks.length}`));
+  if (checks.length) {
+    const badge = el('span', 'badge');
+    badge.append(glyph('check'), document.createTextNode(`${checks.filter((c) => c && c.done).length}/${checks.length}`));
+    meta.appendChild(badge);
+  }
   const comments = asArray(card.comments);
-  if (comments.length) meta.appendChild(el('span', 'badge', `💬 ${comments.length}`));
+  if (comments.length) {
+    const badge = el('span', 'badge');
+    badge.append(glyph('comment'), document.createTextNode(String(comments.length)));
+    meta.appendChild(badge);
+  }
   if (meta.childElementCount) node.appendChild(meta);
 
   node.addEventListener('click', (e) => {
@@ -118,13 +151,13 @@ function openAssignMenu(card, anchor) {
   };
 
   const none = el('button', 'assign-option' + (card.assignee ? '' : ' current'));
-  none.append(el('div', 'avatar empty', '👤'), el('span', null, 'Nobody yet'));
+  none.append(el('div', 'avatar empty'), el('span', null, 'Unassigned'));
   none.addEventListener('click', () => choose(null));
   menu.appendChild(none);
 
   for (const agent of board.agents) {
     const option = el('button', 'assign-option' + (card.assignee === agent.id ? ' current' : ''));
-    const av = el('div', 'avatar', agent.avatar || '🤖');
+    const av = el('div', 'avatar', initials(agent.name));
     av.style.background = safeColor(agent.color, '#6b7ce0');
     const who = el('div');
     who.appendChild(el('div', null, agent.name));
@@ -336,8 +369,7 @@ function columnNode(column) {
   wrap.dataset.id = column.id;
 
   const head = el('div', 'col-head');
-  head.style.background = safeColor(column.color, '#8b93a7');
-  head.appendChild(el('span', 'icon', column.icon || '📋'));
+  head.style.setProperty('--c', safeColor(column.color, '#9aa1b0'));
   const title = el('span', 'title', column.title);
   head.appendChild(title);
   const cards = asArray(column.cards);
@@ -368,8 +400,7 @@ function columnNode(column) {
         api('DELETE', `/api/columns/${column.id}`);
       return;
     }
-    const icon = prompt('Section icon (emoji)', column.icon || '📋') ?? column.icon;
-    api('PATCH', `/api/columns/${column.id}`, { color: color.trim(), icon });
+    api('PATCH', `/api/columns/${column.id}`, { color: color.trim() });
   });
 
   const body = el('div', 'col-body');
@@ -460,7 +491,7 @@ function render() {
     if (previous) node.querySelector('.col-body').scrollTop = previous;
   }
 
-  const addCol = el('button', 'add-column', '+');
+  const addCol = el('button', 'add-column', '+ Section');
   addCol.title = 'Add section';
   addCol.addEventListener('click', addSection);
   root.appendChild(addCol);
@@ -468,7 +499,7 @@ function render() {
 
   $('#board-title').textContent = board.title || 'Workforce';
   renderSectionTabs();
-  renderAssigneeFilter();
+  renderWorkload();
   if (openCardId && !$('#drawer').hidden) renderDrawer();
   if (!$('#team').hidden) renderTeam();
   if (!$('#activity').hidden) renderActivity();
@@ -481,12 +512,9 @@ function renderSectionTabs() {
   strip.innerHTML = '';
   for (const column of board.columns) {
     const tab = el('button', 'sectiontab');
-    tab.style.background = safeColor(column.color, '#8b93a7');
+    tab.style.setProperty('--c', safeColor(column.color, '#9aa1b0'));
     tab.dataset.id = column.id;
-    tab.append(
-      el('span', null, `${column.icon || ''} ${column.title}`.trim()),
-      el('span', 'n', String(asArray(column.cards).length))
-    );
+    tab.append(el('span', 't', column.title), el('span', 'n', String(asArray(column.cards).length)));
     tab.addEventListener('click', () => {
       const node = $(`.column[data-id="${column.id}"]`);
       // Scroll the board itself, never scrollIntoView — that can scroll ancestors
@@ -497,8 +525,7 @@ function renderSectionTabs() {
     strip.appendChild(tab);
   }
 
-  const add = el('button', 'sectiontab', '+');
-  add.style.background = '#8b93a7';
+  const add = el('button', 'sectiontab add', '+');
   add.addEventListener('click', addSection);
   strip.appendChild(add);
 
@@ -531,16 +558,42 @@ async function addSection() {
   await api('POST', '/api/columns', { title, color: palette[board.columns.length % palette.length] });
 }
 
-function renderAssigneeFilter() {
-  const sel = $('#filter-assignee');
-  const current = sel.value;
-  sel.innerHTML = '<option value="">All members</option>';
-  for (const agent of board.agents) {
-    const opt = el('option', null, `${agent.avatar || '🤖'} ${agent.name}`);
-    opt.value = agent.id;
-    sel.appendChild(opt);
+// The strip under the topbar: who has how many open tasks. Clicking a person
+// filters the board to their cards; clicking again clears the filter.
+function renderWorkload() {
+  const strip = $('#workload');
+  strip.innerHTML = '';
+
+  const load = {};
+  let unassigned = 0;
+  let total = 0;
+  for (const column of board.columns) {
+    for (const card of asArray(column.cards)) {
+      if (card.status === 'done') continue; // finished work isn't workload
+      total++;
+      if (card.assignee) load[card.assignee] = (load[card.assignee] || 0) + 1;
+      else unassigned++;
+    }
   }
-  sel.value = current;
+
+  const chip = (label, count, value, avatar) => {
+    const node = el('button', 'wchip' + (filter.assignee === value ? ' active' : ''));
+    if (avatar) node.appendChild(avatar);
+    node.append(el('span', 'wname', label), el('span', 'wcount', String(count)));
+    node.addEventListener('click', () => {
+      filter.assignee = filter.assignee === value ? '' : value;
+      render();
+    });
+    return node;
+  };
+
+  strip.appendChild(chip('All', total, ''));
+  for (const agent of board.agents) {
+    const av = el('span', 'wavatar', initials(agent.name));
+    av.style.background = safeColor(agent.color, '#6b7ce0');
+    strip.appendChild(chip(agent.name, load[agent.id] || 0, agent.id, av));
+  }
+  if (unassigned) strip.appendChild(chip('Unassigned', unassigned, '__none__', el('span', 'wavatar empty')));
 }
 
 /* ------------------------------------------------------------ card drawer */
@@ -569,8 +622,8 @@ function renderDrawer() {
   const editing = focused && $('#drawer').contains(focused) && /INPUT|TEXTAREA|SELECT/.test(focused.tagName);
 
   const chip = $('#drawer-section');
-  chip.textContent = `${column.icon || ''} ${column.title}`.trim();
-  chip.style.background = column.color;
+  chip.textContent = column.title;
+  chip.style.setProperty('--c', safeColor(column.color, '#9aa1b0'));
 
   if (!editing) {
     $('#d-title').value = card.title;
@@ -582,7 +635,7 @@ function renderDrawer() {
   const assignee = $('#d-assignee');
   assignee.innerHTML = '<option value="">Unassigned</option>';
   for (const agent of board.agents) {
-    const opt = el('option', null, `${agent.avatar || '🤖'} ${agent.name} — ${agent.role}`);
+    const opt = el('option', null, `${agent.name} — ${agent.role}`);
     opt.value = agent.id;
     assignee.appendChild(opt);
   }
@@ -621,7 +674,7 @@ function renderDrawer() {
     const node = el('div', 'comment');
     const head = el('div');
     const agent = agentById(c.author);
-    head.appendChild(el('span', 'who', agent ? `${agent.avatar || '🤖'} ${agent.name}` : c.author));
+    head.appendChild(el('span', 'who', agent ? agent.name : c.author));
     head.appendChild(el('span', 'when', formatTime(c.ts)));
     node.append(head, el('div', 'text', c.text));
     comments.appendChild(node);
@@ -668,15 +721,15 @@ function renderTeam() {
 
   for (const agent of board.agents) {
     const row = el('div', 'team-row');
-    const av = el('div', 'avatar', agent.avatar || '🤖');
-    av.style.background = agent.color || '#6b7ce0';
+    const av = el('div', 'avatar', initials(agent.name));
+    av.style.background = safeColor(agent.color, '#6b7ce0');
     const info = el('div');
     info.style.flex = '1';
     info.appendChild(el('div', 'who', agent.name));
     info.appendChild(
       el('div', 'sub', `${agent.role} · ${load[agent.id] || 0} open · ${(agent.skills || []).join(', ') || 'no skills listed'}`)
     );
-    const beMe = el('button', 'ghost small', me() === agent.id ? '✓ you' : 'act as');
+    const beMe = el('button', 'ghost small', me() === agent.id ? 'you' : 'act as');
     beMe.addEventListener('click', () => {
       localStorage.setItem('workforce_me', agent.id);
       renderTeam();
@@ -696,7 +749,7 @@ function renderActivity() {
     const agent = agentById(act.actor);
     const node = el('div', 'act');
     const line = el('div');
-    line.appendChild(el('span', 'who', agent ? `${agent.avatar || '🤖'} ${agent.name}` : act.actor));
+    line.appendChild(el('span', 'who', agent ? agent.name : act.actor));
     line.appendChild(document.createTextNode(` ${act.action} `));
     line.appendChild(el('span', null, act.detail || ''));
     node.append(line, el('div', 'when', formatTime(act.ts)));
@@ -724,7 +777,10 @@ function isOverdue(iso) {
 }
 
 function formatDate(iso) {
-  return parseDay(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  const date = parseDay(iso);
+  const options = { day: 'numeric', month: 'short' };
+  if (date.getFullYear() !== new Date().getFullYear()) options.year = 'numeric';
+  return date.toLocaleDateString(undefined, options);
 }
 function formatTime(iso) {
   const d = new Date(iso);
@@ -739,10 +795,6 @@ function formatTime(iso) {
 
 $('#search').addEventListener('input', (e) => {
   filter.text = e.target.value.trim().toLowerCase();
-  render();
-});
-$('#filter-assignee').addEventListener('change', (e) => {
-  filter.assignee = e.target.value;
   render();
 });
 $('#btn-team').addEventListener('click', () => {
@@ -834,10 +886,9 @@ $('#a-add').addEventListener('click', async () => {
   await api('POST', '/api/agents', {
     id,
     name: $('#a-name').value.trim() || id,
-    avatar: $('#a-avatar').value.trim() || '🤖',
     role: $('#a-role').value.trim() || 'agent',
   });
-  ['#a-id', '#a-name', '#a-avatar', '#a-role'].forEach((s) => ($(s).value = ''));
+  ['#a-id', '#a-name', '#a-role'].forEach((s) => ($(s).value = ''));
 });
 $('#apikey-save').addEventListener('click', () => {
   localStorage.setItem('workforce_key', $('#apikey').value.trim());
