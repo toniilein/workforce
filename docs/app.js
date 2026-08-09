@@ -1,12 +1,11 @@
 /*
  * Board — the GitHub Pages build.
  *
- * There is no server here. The board is rendered from the .md files in the
- * repo's tasks/ folder: GitHub's API lists them, the raw CDN serves them, and
- * this file parses the frontmatter into cards.
- *
- * Editing happens on GitHub — a card links to that file in GitHub's editor —
- * and agents change the same files with git. So the repo IS the database.
+ * No server. Each task is a .md file in the repo's tasks/ folder; this page
+ * lists them through GitHub's API, parses the frontmatter, and renders the
+ * board. Connect a token (sidebar) and it becomes interactive: dragging a card
+ * or editing it rewrites that file and commits. The repo IS the database, and
+ * every change is a commit you can see in the history.
  */
 
 const REPO = { owner: 'toniilein', name: 'workforce', branch: 'main', dir: 'tasks' };
@@ -15,14 +14,15 @@ const SECTIONS = [
   { id: 'todo', title: 'Todo', color: '#3d4451' },
   { id: 'doing', title: 'Doing', color: '#4f8ef7' },
   { id: 'blocked', title: 'Blocked', color: '#e2504f' },
+  { id: 'review', title: 'Review', color: '#f59e0b' },
   { id: 'done', title: 'Done', color: '#4bc07a' },
 ];
 
-// Known people; anyone else named in a file still shows up, in grey.
+// Known people. Anyone else named in a file still appears, in grey.
 const PEOPLE = {
   toni: { name: 'Toni', color: '#2f3542' },
-  jasmin: { name: 'Jasmin', color: '#cd6a56' },
-  mucki: { name: 'Mucki Bot', color: '#5b8aa6' },
+  Adi: { name: 'Adi', color: '#6b7ce0' },
+  '007': { name: 'Pookachu Bot', color: '#5b8aa6' },
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -35,58 +35,32 @@ const el = (tag, cls, text) => {
 
 let tasks = [];
 let filter = { text: '', assignee: '', label: '' };
+let openFile = null;
+let busy = false;
 
 /* ------------------------------------------------------------------ github */
 
 const editUrl = (file) =>
   `https://github.com/${REPO.owner}/${REPO.name}/edit/${REPO.branch}/${REPO.dir}/${encodeURIComponent(file)}`;
 
-const NEW_TEMPLATE = `---
-title: New task
-status: todo
-assignee:
-due:
-labels:
----
-
-Describe the task here. This text is the brief an agent reads before starting.
-`;
-
-function newTaskUrl() {
-  const base = `https://github.com/${REPO.owner}/${REPO.name}/new/${REPO.branch}`;
-  const params = new URLSearchParams({ filename: `${REPO.dir}/new-task.md`, value: NEW_TEMPLATE });
-  return `${base}?${params}`;
-}
-
 async function loadTasks() {
   const listUrl = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/${REPO.dir}?ref=${REPO.branch}`;
-  const res = await fetch(listUrl, { headers: { Accept: 'application/vnd.github+json' } });
-  if (!res.ok) {
-    throw new Error(
-      res.status === 403
-        ? "GitHub's rate limit is reached — try again in a few minutes."
-        : `GitHub said ${res.status} listing ${REPO.dir}/`
-    );
-  }
-  const files = (await res.json()).filter(
+  const files = (await ghFetch(listUrl)).filter(
     (f) => f.type === 'file' && f.name.endsWith('.md') && f.name.toLowerCase() !== 'readme.md'
   );
 
-  // download_url points at the raw CDN, which is cached for a few minutes;
-  // the cache-buster makes Refresh actually refresh.
-  const bust = Date.now();
+  const bust = Date.now(); // raw CDN caches for minutes; Refresh must really refresh
   const loaded = await Promise.all(
     files.map(async (f) => {
       const text = await fetch(`${f.download_url}?t=${bust}`).then((r) => (r.ok ? r.text() : ''));
-      return parseTask(f.name, text);
+      return { ...parseTask(f.name, text), sha: f.sha };
     })
   );
-  return loaded.filter(Boolean);
+  return loaded.sort((a, b) => a.title.localeCompare(b.title));
 }
 
-/* ------------------------------------------------------------------ parsing */
+/* ----------------------------------------------------------- markdown <-> task */
 
-// Minimal frontmatter reader: `key: value` lines between the leading --- pair.
 function parseTask(file, text) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text.trim());
   const meta = {};
@@ -106,14 +80,45 @@ function parseTask(file, text) {
     file,
     title: meta.title || file.replace(/\.md$/, '').replace(/[-_]/g, ' '),
     status: SECTIONS.some((s) => s.id === status) ? status : 'todo',
-    assignee: (meta.assignee || '').toLowerCase(),
+    assignee: meta.assignee || '',
     due: /^\d{4}-\d{2}-\d{2}$/.test(meta.due || '') ? meta.due : '',
-    labels: (meta.labels || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
+    labels: (meta.labels || '').split(',').map((s) => s.trim()).filter(Boolean),
     body,
   };
+}
+
+function toMarkdown(task) {
+  return [
+    '---',
+    `title: ${task.title}`,
+    `status: ${task.status}`,
+    `assignee: ${task.assignee || ''}`,
+    `due: ${task.due || ''}`,
+    `labels: ${task.labels.join(', ')}`,
+    '---',
+    '',
+    task.body || '',
+    '',
+  ].join('\n');
+}
+
+// Every mutation goes through here: rewrite the file, commit, update in place.
+async function saveTask(task, message) {
+  if (!gh.connected) throw new Error('Connect a GitHub token to make changes.');
+  setBusy(true);
+  try {
+    const res = await putFile(REPO, `${REPO.dir}/${task.file}`, toMarkdown(task), message, task.sha);
+    task.sha = res.content.sha; // keep the new sha or the next save 409s
+    render();
+  } finally {
+    setBusy(false);
+  }
+}
+
+function setBusy(on) {
+  busy = on;
+  document.body.classList.toggle('busy', on);
+  $('#page-meta').textContent = on ? 'Saving to GitHub…' : metaLine();
 }
 
 /* ---------------------------------------------------------------- rendering */
@@ -122,7 +127,6 @@ function initials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
   return (((parts[0] || '')[0] || '') + ((parts[1] || '')[0] || '')).toUpperCase() || '?';
 }
-
 const personName = (id) => PEOPLE[id]?.name || id;
 const personColor = (id) => PEOPLE[id]?.color || '#9a988c';
 
@@ -140,14 +144,14 @@ function labelTint(name) {
   return LABEL_TINTS[hash % LABEL_TINTS.length];
 }
 
-function parseDay(iso) {
+const parseDay = (iso) => {
   const [y, m, d] = String(iso).split('-').map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
-}
-function isOverdue(iso) {
+};
+const isOverdue = (iso) => {
   const t = new Date();
   return parseDay(iso) < new Date(t.getFullYear(), t.getMonth(), t.getDate());
-}
+};
 function formatDate(iso) {
   const date = parseDay(iso);
   const opts = { day: 'numeric', month: 'short' };
@@ -165,11 +169,10 @@ function matchesFilter(task) {
 }
 
 function cardNode(task) {
-  const card = el('a', `card ${task.status}`);
-  card.href = editUrl(task.file);
-  card.target = '_blank';
-  card.rel = 'noopener';
-  card.title = `Edit ${task.file} on GitHub`;
+  const card = el('div', `card ${task.status}`);
+  card.dataset.file = task.file;
+  card.draggable = gh.connected;
+  card.title = gh.connected ? 'Click to edit · drag to move' : 'Click to open on GitHub';
 
   if (task.labels.length) {
     const row = el('div', 'card-labels');
@@ -199,6 +202,22 @@ function cardNode(task) {
   }
   meta.appendChild(avatar);
   card.appendChild(meta);
+
+  card.addEventListener('click', () => {
+    if (card.dataset.suppressClick) return;
+    if (gh.connected) openDrawer(task.file);
+    else window.open(editUrl(task.file), '_blank', 'noopener');
+  });
+
+  if (gh.connected) {
+    card.addEventListener('dragstart', (e) => {
+      card.classList.add('dragging');
+      e.dataTransfer.setData('text/plain', task.file);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    enableTouchDrag(card, task);
+  }
   return card;
 }
 
@@ -208,22 +227,33 @@ function render() {
 
   for (const section of SECTIONS) {
     const wrap = el('div', 'column');
+    wrap.dataset.status = section.id;
+
     const head = el('div', 'col-head');
     head.style.setProperty('--c', section.color);
     head.append(el('span', 'title', section.title));
-
-    const all = tasks.filter((t) => t.status === section.id);
-    const visible = all.filter(matchesFilter);
+    const visible = tasks.filter((t) => t.status === section.id && matchesFilter(t));
     head.appendChild(el('span', 'count', String(visible.length)));
 
     const body = el('div', 'col-body');
     for (const task of visible) body.appendChild(cardNode(task));
 
-    const add = el('a', 'add-card', '+ Add task');
-    add.href = newTaskUrl();
-    add.target = '_blank';
-    add.rel = 'noopener';
+    const add = el('button', 'add-card', '+ Add task');
+    add.addEventListener('click', () => createTask(section.id));
     body.appendChild(add);
+
+    if (gh.connected) {
+      body.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        wrap.classList.add('drop-target');
+      });
+      body.addEventListener('dragleave', () => wrap.classList.remove('drop-target'));
+      body.addEventListener('drop', (e) => {
+        e.preventDefault();
+        wrap.classList.remove('drop-target');
+        moveTask(e.dataTransfer.getData('text/plain'), section.id);
+      });
+    }
 
     wrap.append(head, body);
     board.appendChild(wrap);
@@ -232,9 +262,15 @@ function render() {
   renderWorkload();
   renderLabels();
   renderSectionTabs();
+  renderConnection();
+  if (openFile && !$('#drawer').hidden) renderDrawer();
+  if (!busy) $('#page-meta').textContent = metaLine();
+}
 
+function metaLine() {
   const open = tasks.filter((t) => t.status !== 'done').length;
-  $('#page-meta').textContent = `${open} open task${open === 1 ? '' : 's'} · ${tasks.length} files in tasks/`;
+  const mode = gh.connected ? 'connected' : 'read-only';
+  return `${open} open task${open === 1 ? '' : 's'} · ${tasks.length} files · ${mode}`;
 }
 
 function renderWorkload() {
@@ -273,10 +309,7 @@ function renderLabels() {
   const list = $('#labels');
   list.innerHTML = '';
   const names = [...new Set(tasks.flatMap((t) => t.labels))].sort((a, b) => a.localeCompare(b));
-  if (!names.length) {
-    list.appendChild(el('div', 'muted small', 'No labels yet'));
-    return;
-  }
+  if (!names.length) return list.appendChild(el('div', 'muted small', 'No labels yet'));
   for (const name of names) {
     const chip = el('button', 'lchip' + (filter.label === name ? ' active' : ''));
     chip.style.setProperty('--c', labelTint(name).dot);
@@ -289,7 +322,6 @@ function renderLabels() {
   }
 }
 
-// Phone layout: one section per screen, chips to jump between them.
 function renderSectionTabs() {
   const strip = $('#sectiontabs');
   strip.innerHTML = '';
@@ -297,15 +329,245 @@ function renderSectionTabs() {
     const count = tasks.filter((t) => t.status === section.id && matchesFilter(t)).length;
     const tab = el('button', 'sectiontab' + (i === 0 ? ' active' : ''));
     tab.style.setProperty('--c', section.color);
-    tab.dataset.id = section.id;
+    tab.dataset.status = section.id;
     tab.append(el('span', 't', section.title), el('span', 'n', String(count)));
     tab.addEventListener('click', () => {
-      const node = [...document.querySelectorAll('.column')][i];
+      const node = document.querySelectorAll('.column')[i];
       if (node) $('#board').scrollTo({ left: node.offsetLeft, behavior: 'smooth' });
       document.querySelectorAll('.sectiontab').forEach((t) => t.classList.toggle('active', t === tab));
     });
     strip.appendChild(tab);
   });
+}
+
+function renderConnection() {
+  const btn = $('#btn-connect');
+  btn.textContent = gh.connected ? 'Disconnect' : 'Connect GitHub';
+  $('#live').classList.toggle('off', !gh.connected);
+  $('#live').title = gh.connected ? 'Connected — changes commit to the repo' : 'Read-only — connect a token to edit';
+}
+
+/* ------------------------------------------------------------------ actions */
+
+const byFile = (file) => tasks.find((t) => t.file === file);
+
+async function moveTask(file, status) {
+  const task = byFile(file);
+  if (!task || task.status === status) return;
+  const from = task.status;
+  task.status = status;
+  render();
+  try {
+    await saveTask(task, `task: ${task.file.replace(/\.md$/, '')} → ${status}`);
+  } catch (err) {
+    task.status = from; // put it back where it was
+    render();
+    alert(err.message);
+  }
+}
+
+async function createTask(status) {
+  const title = prompt('Task title');
+  if (!title || !title.trim()) return;
+  if (!gh.connected) {
+    alert('Connect a GitHub token first (sidebar), or add the file on GitHub.');
+    return;
+  }
+  const slug =
+    title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'task';
+  let file = `${slug}.md`;
+  let n = 2;
+  while (byFile(file)) file = `${slug}-${n++}.md`;
+
+  const task = { file, title: title.trim(), status, assignee: '', due: '', labels: [], body: '', sha: null };
+  setBusy(true);
+  try {
+    const res = await putFile(REPO, `${REPO.dir}/${file}`, toMarkdown(task), `task: add ${slug}`);
+    task.sha = res.content.sha;
+    tasks.push(task);
+    render();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function removeTask(file) {
+  const task = byFile(file);
+  if (!task || !confirm(`Delete "${task.title}"?\n\nThis deletes ${REPO.dir}/${file} from the repo.`)) return;
+  setBusy(true);
+  try {
+    await deleteFile(REPO, `${REPO.dir}/${file}`, `task: remove ${file.replace(/\.md$/, '')}`, task.sha);
+    tasks = tasks.filter((t) => t.file !== file);
+    closeDrawer();
+    render();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/* ------------------------------------------------------------------ drawer */
+
+function openDrawer(file) {
+  openFile = file;
+  $('#drawer').hidden = false;
+  $('#scrim').hidden = false;
+  renderDrawer();
+}
+
+function closeDrawer() {
+  openFile = null;
+  $('#drawer').hidden = true;
+  $('#scrim').hidden = true;
+}
+
+function renderDrawer() {
+  const task = byFile(openFile);
+  if (!task) return closeDrawer();
+  const focused = document.activeElement;
+  const editing = focused && $('#drawer').contains(focused) && /INPUT|TEXTAREA|SELECT/.test(focused.tagName);
+
+  const section = SECTIONS.find((s) => s.id === task.status);
+  const chip = $('#drawer-section');
+  chip.textContent = section?.title || task.status;
+  chip.style.setProperty('--c', section?.color || '#9a988c');
+
+  if (!editing) {
+    $('#d-title').value = task.title;
+    $('#d-desc').value = task.body;
+    $('#d-due').value = task.due;
+    $('#d-labels').value = task.labels.join(', ');
+  }
+
+  const assignee = $('#d-assignee');
+  assignee.innerHTML = '<option value="">Unassigned</option>';
+  const ids = new Set([...Object.keys(PEOPLE), ...(task.assignee ? [task.assignee] : [])]);
+  for (const id of ids) {
+    const opt = el('option', null, personName(id));
+    opt.value = id;
+    assignee.appendChild(opt);
+  }
+  assignee.value = task.assignee;
+
+  const status = $('#d-status');
+  status.innerHTML = '';
+  for (const s of SECTIONS) {
+    const opt = el('option', null, s.title);
+    opt.value = s.id;
+    status.appendChild(opt);
+  }
+  status.value = task.status;
+
+  $('#d-file').textContent = `${REPO.dir}/${task.file}`;
+  $('#d-github').href = editUrl(task.file);
+}
+
+function patchOpen(change, message) {
+  const task = byFile(openFile);
+  if (!task) return;
+  Object.assign(task, change);
+  render();
+  saveTask(task, message).catch((err) => alert(err.message));
+}
+
+/* -------------------------------------------------------- drag with a finger */
+
+const LONG_PRESS_MS = 260;
+function enableTouchDrag(node, task) {
+  let timer = null;
+  let ghost = null;
+  let start = null;
+  let dragging = false;
+
+  const cancel = () => {
+    clearTimeout(timer);
+    node.classList.remove('press');
+  };
+
+  node.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.pointerType === 'mouse') return;
+      start = { x: e.clientX, y: e.clientY };
+      node.classList.add('press');
+      timer = setTimeout(() => {
+        dragging = true;
+        node.classList.remove('press');
+        node.classList.add('touch-source');
+        $('#board').style.scrollSnapType = 'none';
+        ghost = node.cloneNode(true);
+        ghost.classList.add('touch-ghost');
+        ghost.style.width = `${node.getBoundingClientRect().width}px`;
+        document.body.appendChild(ghost);
+        moveGhost(start.x, start.y);
+        navigator.vibrate?.(8);
+      }, LONG_PRESS_MS);
+    },
+    { passive: true }
+  );
+
+  const moveGhost = (x, y) => {
+    ghost.style.left = `${x - ghost.offsetWidth / 2}px`;
+    ghost.style.top = `${y - 28}px`;
+  };
+
+  node.addEventListener(
+    'pointermove',
+    (e) => {
+      if (!start) return;
+      if (!dragging) {
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
+        return;
+      }
+      e.preventDefault();
+      moveGhost(e.clientX, e.clientY);
+      highlightAt(e.clientX, e.clientY);
+    },
+    { passive: false }
+  );
+
+  const finish = (e) => {
+    cancel();
+    if (!dragging) return (start = null);
+    dragging = false;
+    start = null;
+    ghost?.remove();
+    ghost = null;
+    node.classList.remove('touch-source');
+    clearHighlight();
+    $('#board').style.scrollSnapType = '';
+    node.dataset.suppressClick = '1';
+    setTimeout(() => delete node.dataset.suppressClick, 300);
+
+    const under = elementUnder(e.clientX, e.clientY);
+    const status = under?.closest('.sectiontab')?.dataset.status || under?.closest('.column')?.dataset.status;
+    if (status) moveTask(task.file, status);
+  };
+
+  node.addEventListener('pointerup', finish);
+  node.addEventListener('pointercancel', finish);
+}
+
+function elementUnder(x, y) {
+  const ghost = document.querySelector('.touch-ghost');
+  if (ghost) ghost.style.display = 'none';
+  const under = document.elementFromPoint(x, y);
+  if (ghost) ghost.style.display = '';
+  return under;
+}
+function highlightAt(x, y) {
+  clearHighlight();
+  const under = elementUnder(x, y);
+  const tab = under?.closest('.sectiontab');
+  if (tab) return tab.classList.add('tab-over');
+  under?.closest('.column')?.classList.add('touch-over');
+}
+function clearHighlight() {
+  document.querySelectorAll('.touch-over').forEach((n) => n.classList.remove('touch-over'));
+  document.querySelectorAll('.tab-over').forEach((n) => n.classList.remove('tab-over'));
 }
 
 /* ------------------------------------------------------------------ wiring */
@@ -315,21 +577,68 @@ $('#search').addEventListener('input', (e) => {
   render();
 });
 $('#btn-refresh').addEventListener('click', () => start());
-$('#btn-new').href = newTaskUrl();
+$('#btn-new').addEventListener('click', () => createTask('todo'));
 $('#repo-link').href = `https://github.com/${REPO.owner}/${REPO.name}/tree/${REPO.branch}/${REPO.dir}`;
 
+$('#btn-connect').addEventListener('click', async () => {
+  if (gh.connected) {
+    if (!confirm('Disconnect? The board becomes read-only and the token is removed from this browser.')) return;
+    gh.token = '';
+    render();
+    return;
+  }
+  const token = prompt(
+    'Paste a GitHub token with "Contents: Read and write" on this repo.\n\n' +
+      'It is stored only in this browser and sent only to github.com.'
+  );
+  if (!token || !token.trim()) return;
+  gh.token = token.trim();
+  try {
+    await checkAccess(REPO);
+    await start();
+  } catch (err) {
+    gh.token = '';
+    render();
+    alert(err.message);
+  }
+});
+
+$('#drawer-close').addEventListener('click', closeDrawer);
+$('#scrim').addEventListener('click', closeDrawer);
+document.addEventListener('keydown', (e) => e.key === 'Escape' && closeDrawer());
+
+$('#d-title').addEventListener('change', (e) => {
+  const value = e.target.value.trim();
+  if (value) patchOpen({ title: value }, `task: retitle ${openFile.replace(/\.md$/, '')}`);
+});
+$('#d-desc').addEventListener('change', (e) =>
+  patchOpen({ body: e.target.value }, `task: edit ${openFile.replace(/\.md$/, '')}`)
+);
+$('#d-due').addEventListener('change', (e) =>
+  patchOpen({ due: e.target.value }, `task: due ${openFile.replace(/\.md$/, '')}`)
+);
+$('#d-labels').addEventListener('change', (e) =>
+  patchOpen(
+    { labels: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) },
+    `task: labels ${openFile.replace(/\.md$/, '')}`
+  )
+);
+$('#d-assignee').addEventListener('change', (e) =>
+  patchOpen({ assignee: e.target.value }, `task: assign ${openFile.replace(/\.md$/, '')}`)
+);
+$('#d-status').addEventListener('change', (e) => moveTask(openFile, e.target.value));
+$('#d-delete').addEventListener('click', () => removeTask(openFile));
+
 async function start() {
-  const live = $('#live');
   try {
     $('#page-meta').textContent = 'Loading from GitHub…';
     tasks = await loadTasks();
-    live.classList.remove('off');
     render();
   } catch (err) {
-    live.classList.add('off');
     $('#page-meta').textContent = err.message;
     $('#board').innerHTML = '';
     $('#board').appendChild(el('div', 'muted', err.message));
+    renderConnection();
   }
 }
 

@@ -21,9 +21,10 @@
     <nav id="labels" class="side-labels" aria-label="Labels"></nav>
 
     <div class="side-foot">
-      <a id="repo-link" class="side-link" target="_blank" rel="noopener">Repo</a>
+      <button id="btn-connect" class="side-link">Connect GitHub</button>
       <button id="btn-refresh" class="side-link">Refresh</button>
-      <span id="live" class="live" title="Loaded from GitHub"></span>
+      <a id="repo-link" class="side-link" target="_blank" rel="noopener">Files</a>
+      <span id="live" class="live off" title="Read-only"></span>
     </div>
   </aside>
 
@@ -35,7 +36,7 @@
       </div>
       <div class="topbar-actions">
         <input id="search" type="search" placeholder="Search tasks…" />
-        <a id="btn-new" class="primary" target="_blank" rel="noopener">+ New task</a>
+        <button id="btn-new" class="primary">+ New task</button>
       </div>
     </header>
 
@@ -46,6 +47,41 @@
 
 </div>
 
+<!-- card detail drawer -->
+<aside id="drawer" class="drawer" hidden>
+  <div class="drawer-head">
+    <span id="drawer-section" class="chip"></span>
+    <button id="drawer-close" class="icon-btn">✕</button>
+  </div>
+  <textarea id="d-title" class="d-title" rows="2"></textarea>
+  <div class="d-row">
+    <label>Responsible</label>
+    <select id="d-assignee"></select>
+  </div>
+  <div class="d-row">
+    <label>Section</label>
+    <select id="d-status"></select>
+  </div>
+  <div class="d-row">
+    <label>Due</label>
+    <input id="d-due" type="date" />
+  </div>
+  <div class="d-row">
+    <label>Labels</label>
+    <input id="d-labels" placeholder="comma,separated" />
+  </div>
+  <label class="d-label">Description / agent brief</label>
+  <textarea id="d-desc" class="d-desc" rows="12" placeholder="What should be done? Context, links, definition of done…"></textarea>
+  <p class="muted small">Every change commits to the repo. Agents read and write these same files.</p>
+  <div class="drawer-foot">
+    <button id="d-delete" class="danger small">Delete task</button>
+    <span class="muted small"><a id="d-github" target="_blank" rel="noopener">open on GitHub</a> · <span id="d-file"></span></span>
+  </div>
+</aside>
+
+<div id="scrim" class="scrim" hidden></div>
+
+<script src="./github.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

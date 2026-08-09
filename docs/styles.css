@@ -741,3 +741,9 @@ code { background: #efece0; padding: 1px 5px; border-radius: 4px; font-size: 12p
 .add-card { line-height: 38px; text-align: center; }
 a.primary { display: inline-flex; align-items: center; text-decoration: none; }
 .side-link { text-decoration: none; }
+
+/* Saving to GitHub: dim and block input so a second edit can't race the commit. */
+body.busy .board, body.busy .drawer { opacity: .6; pointer-events: none; }
+.add-card { text-align: center; }
+a.side-link, #d-github { text-decoration: none; color: inherit; }
+#d-github { text-decoration: underline; }
