@@ -5,26 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Workforce — Agent Kanban</title>
 <link rel="stylesheet" href="/styles.css" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗂️</text></svg>" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%233c4433'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f5ec' font-family='Georgia'>W</text></svg>" />
 </head>
 <body>
 
-<header class="topbar">
-  <div class="brand"><span id="board-title">Workforce</span></div>
-  <div class="topbar-actions">
-    <input id="search" type="search" placeholder="Filter tasks…" />
-    <button id="btn-team" class="ghost">Team</button>
-    <button id="btn-activity" class="ghost">Activity</button>
-    <span id="live" class="live" title="Live connection"></span>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="side-brand"><span class="mark">W</span><span class="wordmark">Workforce</span></div>
+
+    <div class="side-label">Team</div>
+    <nav id="workload" class="side-team" aria-label="Workload"></nav>
+
+    <div class="side-label">Labels</div>
+    <nav id="labels" class="side-labels" aria-label="Labels"></nav>
+
+    <div class="side-foot">
+      <button id="btn-team" class="side-link">Manage team</button>
+      <button id="btn-activity" class="side-link">Activity</button>
+      <span id="live" class="live" title="Live connection"></span>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="page-head">
+        <h1 id="board-title">Workforce</h1>
+        <div id="page-meta" class="page-meta"></div>
+      </div>
+      <div class="topbar-actions">
+        <input id="search" type="search" placeholder="Search tasks…" />
+        <button id="btn-new" class="primary">+ New task</button>
+      </div>
+    </header>
+
+    <nav id="sectiontabs" class="sectiontabs" aria-label="Sections"></nav>
+
+    <main id="board" class="board"></main>
   </div>
-</header>
 
-<!-- who has how many open tasks — click a person to filter the board -->
-<nav id="workload" class="workload" aria-label="Workload"></nav>
-
-<nav id="sectiontabs" class="sectiontabs" aria-label="Sections"></nav>
-
-<main id="board" class="board"></main>
+</div>
 
 <!-- quick "who is responsible" picker, opened by tapping a card's avatar -->
 <div id="assign-menu" class="assign-menu" hidden></div>
@@ -37,7 +57,7 @@
   </div>
   <textarea id="d-title" class="d-title" rows="2"></textarea>
   <div class="d-row">
-    <label>Assignee</label>
+    <label>Responsible</label>
     <select id="d-assignee"></select>
   </div>
   <div class="d-row">

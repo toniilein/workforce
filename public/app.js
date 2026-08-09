@@ -10,7 +10,7 @@ const el = (tag, cls, text) => {
 
 let board = { columns: [], agents: [], activity: [] };
 let openCardId = null;
-let filter = { text: '', assignee: '' };
+let filter = { text: '', assignee: '', label: '' };
 
 /* ------------------------------------------------------------------- api */
 
@@ -75,7 +75,30 @@ function glyph(name) {
   return span;
 }
 
-const filterActive = () => Boolean(filter.text || filter.assignee);
+// Labels tint their chips from a fixed warm palette, picked by name hash so a
+// label keeps its colour everywhere without anyone having to choose one.
+const LABEL_TINTS = [
+  { bg: '#e9ead6', fg: '#5c6132', dot: '#8a944e' },
+  { bg: '#f5e7cd', fg: '#8a6420', dot: '#c9922e' },
+  { bg: '#f6dfd9', fg: '#96493c', dot: '#cd6a56' },
+  { bg: '#dde7ec', fg: '#3d6178', dot: '#5b8aa6' },
+  { bg: '#dfeada', fg: '#48693f', dot: '#6d9861' },
+  { bg: '#ebe0e9', fg: '#7b4a72', dot: '#a06a97' },
+];
+function labelTint(name) {
+  let hash = 0;
+  for (const ch of String(name)) hash = (hash * 31 + ch.codePointAt(0)) % 997;
+  return LABEL_TINTS[hash % LABEL_TINTS.length];
+}
+function labelChip(name) {
+  const tint = labelTint(name);
+  const chip = el('span', 'label', String(name));
+  chip.style.setProperty('--lbg', tint.bg);
+  chip.style.setProperty('--lfg', tint.fg);
+  return chip;
+}
+
+const filterActive = () => Boolean(filter.text || filter.assignee || filter.label);
 
 function matchesFilter(card) {
   if (filter.assignee === '__none__') {
@@ -83,6 +106,7 @@ function matchesFilter(card) {
   } else if (filter.assignee && card.assignee !== filter.assignee) {
     return false;
   }
+  if (filter.label && !asArray(card.labels).includes(filter.label)) return false;
   if (filter.text) {
     const hay = `${card.title} ${card.description || ''} ${asArray(card.labels).join(' ')}`.toLowerCase();
     if (!hay.includes(filter.text)) return false;
@@ -95,12 +119,23 @@ function cardNode(card, column) {
   node.draggable = true;
   node.dataset.id = card.id;
 
-  node.appendChild(el('div', 'card-title', card.title));
-  node.appendChild(avatarNode(card.assignee));
+  const labels = asArray(card.labels);
+  if (labels.length) {
+    const row = el('div', 'card-labels');
+    for (const label of labels) row.appendChild(labelChip(label));
+    node.appendChild(row);
+  }
 
+  node.appendChild(el('div', 'card-title', card.title));
+
+  // Bottom row: date and progress on the left, the responsible person on the right.
   const meta = el('div', 'card-meta');
-  for (const label of asArray(card.labels)) meta.appendChild(el('span', 'label', String(label)));
-  if (card.due) {
+  if (card.status === 'done') {
+    const finished = new Date(card.updatedAt || Date.now());
+    meta.appendChild(
+      el('span', 'done-date', `✓ ${finished.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`)
+    );
+  } else if (card.due) {
     meta.appendChild(el('span', 'due' + (isOverdue(card.due) ? ' overdue' : ''), formatDate(card.due)));
   }
   const checks = asArray(card.checklist);
@@ -115,7 +150,8 @@ function cardNode(card, column) {
     badge.append(glyph('comment'), document.createTextNode(String(comments.length)));
     meta.appendChild(badge);
   }
-  if (meta.childElementCount) node.appendChild(meta);
+  meta.appendChild(avatarNode(card.assignee));
+  node.appendChild(meta);
 
   node.addEventListener('click', (e) => {
     if (e.target.closest('.avatar')) return; // the avatar is the assignee picker
@@ -406,7 +442,7 @@ function columnNode(column) {
   const body = el('div', 'col-body');
   for (const card of visible) body.appendChild(cardNode(card, column));
 
-  const add = el('button', 'add-card', '+');
+  const add = el('button', 'add-card', '+ Add task');
   add.addEventListener('click', () => startNewCard(column, body, add));
   body.appendChild(add);
 
@@ -498,8 +534,16 @@ function render() {
   root.scrollLeft = scroll;
 
   $('#board-title').textContent = board.title || 'Workforce';
+  const open = board.columns.reduce(
+    (n, c) => n + asArray(c.cards).filter((card) => card.status !== 'done').length,
+    0
+  );
+  const today = new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  $('#page-meta').textContent = `${open} open task${open === 1 ? '' : 's'} · week of ${today}`;
+
   renderSectionTabs();
   renderWorkload();
+  renderLabels();
   if (openCardId && !$('#drawer').hidden) renderDrawer();
   if (!$('#team').hidden) renderTeam();
   if (!$('#activity').hidden) renderActivity();
@@ -587,13 +631,39 @@ function renderWorkload() {
     return node;
   };
 
-  strip.appendChild(chip('All', total, ''));
+  strip.appendChild(chip('Everyone', total, ''));
   for (const agent of board.agents) {
     const av = el('span', 'wavatar', initials(agent.name));
-    av.style.background = safeColor(agent.color, '#6b7ce0');
+    av.style.background = safeColor(agent.color, '#9a988c');
     strip.appendChild(chip(agent.name, load[agent.id] || 0, agent.id, av));
   }
   if (unassigned) strip.appendChild(chip('Unassigned', unassigned, '__none__', el('span', 'wavatar empty')));
+}
+
+// The sidebar's label list: every distinct label in use, tinted like its chips.
+// Clicking filters the board to that label; clicking again clears.
+function renderLabels() {
+  const list = $('#labels');
+  list.innerHTML = '';
+  const seen = new Set();
+  for (const column of board.columns)
+    for (const card of asArray(column.cards)) for (const label of asArray(card.labels)) seen.add(String(label));
+
+  const names = [...seen].sort((a, b) => a.localeCompare(b));
+  if (!names.length) {
+    list.appendChild(el('div', 'muted small', 'No labels yet'));
+    return;
+  }
+  for (const name of names) {
+    const chip = el('button', 'lchip' + (filter.label === name ? ' active' : ''));
+    chip.style.setProperty('--c', labelTint(name).dot);
+    chip.appendChild(el('span', 'lname', name));
+    chip.addEventListener('click', () => {
+      filter.label = filter.label === name ? '' : name;
+      render();
+    });
+    list.appendChild(chip);
+  }
 }
 
 /* ------------------------------------------------------------ card drawer */
@@ -796,6 +866,11 @@ function formatTime(iso) {
 $('#search').addEventListener('input', (e) => {
   filter.text = e.target.value.trim().toLowerCase();
   render();
+});
+// "+ New task" opens the composer in the section currently on screen.
+$('#btn-new').addEventListener('click', () => {
+  const target = $(`.column[data-id="${activeSectionId()}"] .add-card`) || $('.column .add-card');
+  target?.click();
 });
 $('#btn-team').addEventListener('click', () => {
   const open = $('#team').hidden;
