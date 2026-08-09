@@ -1,9 +1,34 @@
 {
-  "title": "Workforce",
+  "title": "Board",
   "agents": [
-    { "id": "toni", "name": "Toni", "role": "human", "color": "#2f3542", "skills": ["decisions", "priorities"] },
-    { "id": "mucki", "name": "Mucki Bot", "role": "agent", "color": "#5b8aa6", "skills": ["research", "writing", "admin"] },
-    { "id": "jasmin", "name": "Jasmin", "role": "human", "color": "#cd6a56", "skills": [] }
+    {
+      "id": "toni",
+      "name": "Toni",
+      "role": "human",
+      "color": "#2f3542",
+      "skills": [
+        "decisions",
+        "priorities"
+      ]
+    },
+    {
+      "id": "mucki",
+      "name": "Mucki Bot",
+      "role": "agent",
+      "color": "#5b8aa6",
+      "skills": [
+        "research",
+        "writing",
+        "admin"
+      ]
+    },
+    {
+      "id": "jasmin",
+      "name": "Jasmin",
+      "role": "human",
+      "color": "#cd6a56",
+      "skills": []
+    }
   ],
   "columns": [
     {
@@ -18,13 +43,24 @@
           "title": "Tap a card to open it, tap the avatar to set who is responsible",
           "description": "This is the task brief. Whatever you write here is what an AI agent reads before starting: context, links, and what \"done\" means.\n\nOn a phone: press and hold a card to drag it to another section, or swipe sideways to change section.",
           "assignee": null,
-          "labels": ["start here"],
+          "labels": [
+            "start here"
+          ],
           "due": null,
           "status": "open",
           "checklist": [
-            { "text": "Open this card", "done": true },
-            { "text": "Set someone as responsible", "done": false },
-            { "text": "Move it to Doing", "done": false }
+            {
+              "text": "Open this card",
+              "done": true
+            },
+            {
+              "text": "Set someone as responsible",
+              "done": false
+            },
+            {
+              "text": "Move it to Doing",
+              "done": false
+            }
           ],
           "comments": [],
           "createdBy": "toni",
@@ -33,9 +69,30 @@
         }
       ]
     },
-    { "id": "col_doing", "title": "Doing", "color": "#4f8ef7", "icon": "🚧", "wipLimit": null, "cards": [] },
-    { "id": "col_blocked", "title": "Blocked", "color": "#e2504f", "icon": "⛔", "wipLimit": null, "cards": [] },
-    { "id": "col_done", "title": "Done", "color": "#4bc07a", "icon": "✅", "wipLimit": null, "cards": [] }
+    {
+      "id": "col_doing",
+      "title": "Doing",
+      "color": "#4f8ef7",
+      "icon": "🚧",
+      "wipLimit": null,
+      "cards": []
+    },
+    {
+      "id": "col_blocked",
+      "title": "Blocked",
+      "color": "#e2504f",
+      "icon": "⛔",
+      "wipLimit": null,
+      "cards": []
+    },
+    {
+      "id": "col_done",
+      "title": "Done",
+      "color": "#4bc07a",
+      "icon": "✅",
+      "wipLimit": null,
+      "cards": []
+    }
   ],
   "activity": []
 }

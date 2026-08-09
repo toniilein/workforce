@@ -533,7 +533,7 @@ function render() {
   root.appendChild(addCol);
   root.scrollLeft = scroll;
 
-  $('#board-title').textContent = board.title || 'Workforce';
+  $('#board-title').textContent = board.title || 'Board';
   const open = board.columns.reduce(
     (n, c) => n + asArray(c.cards).filter((card) => card.status !== 'done').length,
     0
