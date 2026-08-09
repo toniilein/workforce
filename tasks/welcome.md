@@ -1,6 +1,6 @@
 ---
 title: This board is built from markdown files
-status: doing
+status: todo
 assignee: toni
 due: 
 labels: start here
