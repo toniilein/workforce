@@ -319,7 +319,7 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   color: var(--lfg, #61604f);
 }
 
-.card-title { word-break: break-word; font-weight: 550; }
+.card-title { word-break: break-word; font-weight: 400; }
 
 .card-meta {
   display: flex;

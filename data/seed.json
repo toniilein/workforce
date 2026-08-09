@@ -1,10 +1,9 @@
 {
   "title": "Workforce",
   "agents": [
-    { "id": "toni", "name": "Toni", "role": "human", "avatar": "🧑", "color": "#2f3542", "skills": ["decisions", "priorities"] },
-    { "id": "research", "name": "Research Agent", "role": "agent", "avatar": "🔎", "color": "#4f8ef7", "skills": ["web-research", "summaries", "due-diligence"] },
-    { "id": "writer", "name": "Writer Agent", "role": "agent", "avatar": "✍️", "color": "#8b5cf6", "skills": ["decks", "copy", "emails"] },
-    { "id": "ops", "name": "Ops Agent", "role": "agent", "avatar": "⚙️", "color": "#f0a441", "skills": ["admin", "filings", "expenses"] }
+    { "id": "toni", "name": "Toni", "role": "human", "color": "#2f3542", "skills": ["decisions", "priorities"] },
+    { "id": "mucki", "name": "Mucki Bot", "role": "agent", "color": "#5b8aa6", "skills": ["research", "writing", "admin"] },
+    { "id": "jasmin", "name": "Jasmin", "role": "human", "color": "#cd6a56", "skills": [] }
   ],
   "columns": [
     {
