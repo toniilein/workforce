@@ -343,6 +343,7 @@ function renderSectionTabs() {
 function renderConnection() {
   const btn = $('#btn-connect');
   btn.textContent = gh.connected ? 'Disconnect' : 'Connect GitHub';
+  $('#banner').hidden = gh.connected;
   $('#live').classList.toggle('off', !gh.connected);
   $('#live').title = gh.connected ? 'Connected — changes commit to the repo' : 'Read-only — connect a token to edit';
 }
@@ -580,7 +581,7 @@ $('#btn-refresh').addEventListener('click', () => start());
 $('#btn-new').addEventListener('click', () => createTask('todo'));
 $('#repo-link').href = `https://github.com/${REPO.owner}/${REPO.name}/tree/${REPO.branch}/${REPO.dir}`;
 
-$('#btn-connect').addEventListener('click', async () => {
+async function connectGitHub() {
   if (gh.connected) {
     if (!confirm('Disconnect? The board becomes read-only and the token is removed from this browser.')) return;
     gh.token = '';
@@ -589,6 +590,8 @@ $('#btn-connect').addEventListener('click', async () => {
   }
   const token = prompt(
     'Paste a GitHub token with "Contents: Read and write" on this repo.\n\n' +
+      'Create one at github.com/settings/personal-access-tokens/new — pick this repo only,\n' +
+      'then Permissions → Contents → Read and write.\n\n' +
       'It is stored only in this browser and sent only to github.com.'
   );
   if (!token || !token.trim()) return;
@@ -601,7 +604,10 @@ $('#btn-connect').addEventListener('click', async () => {
     render();
     alert(err.message);
   }
-});
+}
+
+$('#btn-connect').addEventListener('click', connectGitHub);
+$('#banner-connect').addEventListener('click', connectGitHub);
 
 $('#drawer-close').addEventListener('click', closeDrawer);
 $('#scrim').addEventListener('click', closeDrawer);

@@ -747,3 +747,24 @@ body.busy .board, body.busy .drawer { opacity: .6; pointer-events: none; }
 .add-card { text-align: center; }
 a.side-link, #d-github { text-decoration: none; color: inherit; }
 #d-github { text-decoration: underline; }
+
+/* Read-only notice — dragging needs a token, so say so where it can't be missed. */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 26px 12px;
+  padding: 10px 14px;
+  background: #f5e7cd;
+  border: 1px solid #e6d3ae;
+  border-radius: 10px;
+  font-size: 13.5px;
+  color: #6b5320;
+}
+.banner[hidden] { display: none; }
+.banner span { flex: 1; min-width: 220px; }
+.banner-help { color: #6b5320; font-size: 12.5px; }
+@media (max-width: 760px) {
+  .banner { order: 2; margin: 0 12px 8px; padding: 9px 12px; font-size: 12.5px; }
+}
