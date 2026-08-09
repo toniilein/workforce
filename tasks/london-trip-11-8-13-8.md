@@ -1,6 +1,6 @@
 ---
 title: London Trip 11.8-13.8.
-status: blocked
+status: doing
 assignee: 007
 due: 
 labels: 
