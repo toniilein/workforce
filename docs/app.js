@@ -365,7 +365,7 @@ function renderSectionTabs() {
 
 function renderConnection() {
   const btn = $('#btn-connect');
-  btn.textContent = gh.connected ? 'Disconnect' : 'Connect GitHub';
+  if (btn) btn.textContent = gh.connected ? 'GitHub token' : 'Connect GitHub';
 
   const banner = $('#banner');
   const text = $('#banner-text');
@@ -713,24 +713,38 @@ const repoLink = $('#repo-link');
 if (repoLink) repoLink.href = `https://github.com/${REPO.owner}/${REPO.name}/tree/${REPO.branch}/${REPO.dir}`;
 
 function openTokenModal() {
-  $('#token-input').value = '';
-  $('#token-error').hidden = true;
-  $('#token-modal').hidden = false;
-  $('#token-input').focus();
-}
-function closeTokenModal() {
-  $('#token-modal').hidden = true;
+  const input = $('#token-input');
+  const modal = $('#token-modal');
+  if (!modal || !input) return;
+  input.value = '';
+  const err = $('#token-error');
+  if (err) err.hidden = true;
+  // Replacing a saved token has to be possible without disconnecting first —
+  // otherwise a broken token locks you out of entering a working one.
+  const current = $('#token-current');
+  if (current) current.hidden = !gh.connected;
+  const remove = $('#token-disconnect');
+  if (remove) remove.hidden = !gh.connected;
+  modal.hidden = false;
+  input.focus();
 }
 
-async function connectGitHub() {
-  if (gh.connected && !permissionProblem) {
-    gh.token = '';
-    permissionProblem = false;
-    render();
-    toast('Disconnected — the board is read-only again.');
-    return;
-  }
+function closeTokenModal() {
+  const modal = $('#token-modal');
+  if (modal) modal.hidden = true;
+}
+
+// Always opens the dialog; disconnecting lives inside it.
+function connectGitHub() {
   openTokenModal();
+}
+
+function disconnectGitHub() {
+  gh.token = '';
+  permissionProblem = false;
+  closeTokenModal();
+  render();
+  toast('Token removed — the board is read-only again.');
 }
 
 async function saveToken() {
@@ -741,7 +755,8 @@ async function saveToken() {
 
   const previous = gh.token;
   gh.token = token;
-  $('#token-save').disabled = true;
+  const saveBtn = $('#token-save');
+  if (saveBtn) saveBtn.disabled = true;
   try {
     await checkAccess(REPO);
     // The repo endpoint reports OUR access, not the token's, so it cannot prove
@@ -755,7 +770,7 @@ async function saveToken() {
     err.textContent = e.message;
     err.hidden = false;
   } finally {
-    $('#token-save').disabled = false;
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 
@@ -763,6 +778,7 @@ on('#btn-connect', 'click', connectGitHub);
 on('#banner-connect', 'click', connectGitHub);
 on('#token-save', 'click', saveToken);
 on('#token-cancel', 'click', closeTokenModal);
+on('#token-disconnect', 'click', disconnectGitHub);
 on('#token-input', 'keydown', (e) => e.key === 'Enter' && saveToken());
 on('#token-modal', 'click', (e) => e.target.id === 'token-modal' && closeTokenModal());
 
