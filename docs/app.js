@@ -33,6 +33,15 @@ const el = (tag, cls, text) => {
   return n;
 };
 
+// Bind defensively. Pages caches HTML and JS separately, so a deploy can briefly
+// pair new JS with old HTML; without this, one missing element throws and takes
+// the whole board down instead of just disabling one button.
+function on(sel, event, handler) {
+  const node = $(sel);
+  if (node) node.addEventListener(event, handler);
+  else console.warn(`missing element ${sel} — reload if the page is mid-update`);
+}
+
 let tasks = [];
 let filter = { text: '', assignee: '', label: '' };
 let openFile = null;
@@ -45,7 +54,9 @@ let permissionProblem = false; // token connected but GitHub refused a write
 // in-page and non-blocking.
 function toast(message, kind = 'info') {
   const node = el('div', `toast ${kind}`, message);
-  $('#toasts').appendChild(node);
+  const host = $('#toasts');
+  if (!host) return console.warn('toast:', message);
+  host.appendChild(node);
   setTimeout(() => node.classList.add('leaving'), kind === 'error' ? 6000 : 2500);
   setTimeout(() => node.remove(), kind === 'error' ? 6400 : 2900);
 }
@@ -360,6 +371,7 @@ function renderConnection() {
   const text = $('#banner-text');
   const connect = $('#banner-connect');
   const help = $('#banner-help');
+  if (!banner || !text || !connect) return;
 
   if (permissionProblem) {
     banner.hidden = false;
@@ -691,13 +703,14 @@ function clearHighlight() {
 
 /* ------------------------------------------------------------------ wiring */
 
-$('#search').addEventListener('input', (e) => {
+on('#search', 'input', (e) => {
   filter.text = e.target.value.trim().toLowerCase();
   render();
 });
-$('#btn-refresh').addEventListener('click', () => start());
-$('#btn-new').addEventListener('click', () => createTask('todo'));
-$('#repo-link').href = `https://github.com/${REPO.owner}/${REPO.name}/tree/${REPO.branch}/${REPO.dir}`;
+on('#btn-refresh', 'click', () => start());
+on('#btn-new', 'click', () => createTask('todo'));
+const repoLink = $('#repo-link');
+if (repoLink) repoLink.href = `https://github.com/${REPO.owner}/${REPO.name}/tree/${REPO.branch}/${REPO.dir}`;
 
 function openTokenModal() {
   $('#token-input').value = '';
@@ -746,38 +759,38 @@ async function saveToken() {
   }
 }
 
-$('#btn-connect').addEventListener('click', connectGitHub);
-$('#banner-connect').addEventListener('click', connectGitHub);
-$('#token-save').addEventListener('click', saveToken);
-$('#token-cancel').addEventListener('click', closeTokenModal);
-$('#token-input').addEventListener('keydown', (e) => e.key === 'Enter' && saveToken());
-$('#token-modal').addEventListener('click', (e) => e.target.id === 'token-modal' && closeTokenModal());
+on('#btn-connect', 'click', connectGitHub);
+on('#banner-connect', 'click', connectGitHub);
+on('#token-save', 'click', saveToken);
+on('#token-cancel', 'click', closeTokenModal);
+on('#token-input', 'keydown', (e) => e.key === 'Enter' && saveToken());
+on('#token-modal', 'click', (e) => e.target.id === 'token-modal' && closeTokenModal());
 
-$('#drawer-close').addEventListener('click', closeDrawer);
-$('#scrim').addEventListener('click', closeDrawer);
+on('#drawer-close', 'click', closeDrawer);
+on('#scrim', 'click', closeDrawer);
 document.addEventListener('keydown', (e) => e.key === 'Escape' && closeDrawer());
 
-$('#d-title').addEventListener('change', (e) => {
+on('#d-title', 'change', (e) => {
   const value = e.target.value.trim();
   if (value) patchOpen({ title: value }, `task: retitle ${openFile.replace(/\.md$/, '')}`);
 });
-$('#d-desc').addEventListener('change', (e) =>
+on('#d-desc', 'change', (e) =>
   patchOpen({ body: e.target.value }, `task: edit ${openFile.replace(/\.md$/, '')}`)
 );
-$('#d-due').addEventListener('change', (e) =>
+on('#d-due', 'change', (e) =>
   patchOpen({ due: e.target.value }, `task: due ${openFile.replace(/\.md$/, '')}`)
 );
-$('#d-labels').addEventListener('change', (e) =>
+on('#d-labels', 'change', (e) =>
   patchOpen(
     { labels: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) },
     `task: labels ${openFile.replace(/\.md$/, '')}`
   )
 );
-$('#d-assignee').addEventListener('change', (e) =>
+on('#d-assignee', 'change', (e) =>
   patchOpen({ assignee: e.target.value }, `task: assign ${openFile.replace(/\.md$/, '')}`)
 );
-$('#d-status').addEventListener('change', (e) => moveTask(openFile, e.target.value));
-$('#d-delete').addEventListener('click', () => requestDelete(openFile));
+on('#d-status', 'change', (e) => moveTask(openFile, e.target.value));
+on('#d-delete', 'click', () => requestDelete(openFile));
 
 async function start() {
   try {
