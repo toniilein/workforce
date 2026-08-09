@@ -1,6 +1,6 @@
 ---
 title: split travel
-status: doing
+status: blocked
 assignee: 
 due: 
 labels: 
