@@ -51,15 +51,36 @@ touch screen — without it the board would be read-only on a phone.
 
 ## Data
 
-State lives in `data/board.json`, written atomically (temp file + rename), coalesced over ~150 ms and
-forced through at least once a second during sustained activity. `SIGTERM`/`SIGINT` flush before exit,
-so a redeploy or a Stop click doesn't drop the last change.
+The board has two interchangeable storage backends, chosen from the environment at startup:
 
-If `data/board.json` is ever unreadable, the server does **not** quietly reseed over it: it renames the
-file to `board.json.corrupt-<timestamp>`, tells you where it went, and refuses to start.
+| Backend | When it's used | Good for |
+| --- | --- | --- |
+| **File** (`data/board.json`) | default — no config | local dev, single machine |
+| **Postgres** (one row) | when `DATABASE_URL` is set | Replit, and **one shared database** for local + deployed |
 
-`data/seed.json` is the board a fresh install starts from — delete `data/board.json` to reset to it.
-It's plain JSON, so a copy is a backup.
+Set `DATABASE_URL` to your Postgres connection string and the board uses Postgres instead of the file —
+no other change. To force one or the other regardless, set `BOARD_STORE=file` or `BOARD_STORE=postgres`.
+There is **no** silent fallback: if you asked for Postgres and it can't be reached, the server stops with
+a clear error rather than quietly writing to a throwaway local file.
+
+### One database for local *and* Replit (no duplicates)
+
+The point of Postgres here is that your local machine and the deployed Replit app can point at the **same**
+database, so there's a single source of truth:
+
+1. In Replit, add a **PostgreSQL** database (Tools → Database, or the Database tab). Replit provisions it
+   and exposes a `DATABASE_URL`.
+2. Copy that connection string into `.env` on your machine (`cp .env.example .env`, then paste). `.env` is
+   gitignored — the credential never goes near the repo, and you never paste it into chat.
+3. `npm install` once (pulls the single `postgres` package), then `npm start`. The startup banner prints
+   `storage: postgres`. Now local edits and the live site read and write the same board.
+
+### Durability details (both backends)
+
+Writes are coalesced over ~150 ms and forced through at least once a second during sustained activity;
+`SIGTERM`/`SIGINT` flush before exit, so a redeploy or Stop doesn't drop the last change. A file that is
+present but unreadable is renamed to `board.json.corrupt-<timestamp>` and the server refuses to start
+rather than reseeding over real data. `data/seed.json` is the board a fresh, empty store starts from.
 
 ⚠️ `data/board.json` is gitignored, so your live board is not in the repo. **`data/seed.json` is in the
 repo and this repo is public** — whatever tasks are in the seed are readable by anyone. Replace the seed
@@ -81,11 +102,12 @@ that works on your phone. Codespaces stop when idle, so this is for working on i
 ## Deploying to Replit
 
 1. Create a Repl → **Import from GitHub** (`toniilein/workforce`).
-2. `.replit` is already set up: `node server.js`, port 3000 → 80, no dependencies to install.
-3. Press **Run**, then **Deploy**.
-4. Choose **Reserved VM**, not Autoscale — `.replit` already requests it. Autoscale runs several copies
-   of the process, each with its own board and its own SSE clients, and wipes the filesystem on every
-   cold start, so the board silently reverts to the seed. One always-on instance is what this design needs.
+2. Add a **PostgreSQL** database (Tools → Database). Replit sets `DATABASE_URL` automatically; the app
+   picks it up and creates its table on first run.
+3. `.replit` is already set up: it runs `npm install` (for the `postgres` package) then `node server.js`,
+   port 3000 → 80.
+4. Press **Run**, then **Deploy** → **Reserved VM** (not Autoscale). `.replit` requests VM already:
+   this server keeps its live-update connections in memory, so it must be one always-on instance.
 5. In **Secrets**, set `API_KEY` to any random string. The server then rejects unauthenticated calls;
    put the same value in the board's Team panel → *API access*, and give it to your agents as `X-API-Key`.
 

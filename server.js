@@ -4,6 +4,15 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { createStore } from './storage.js';
+
+// Load a local .env if present (for DATABASE_URL etc.). No-op on Replit, where
+// the environment is already populated and there is no .env file.
+try {
+  process.loadEnvFile();
+} catch {
+  /* no .env — that's fine */
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -18,34 +27,34 @@ const API_KEY = process.env.API_KEY || '';
 /* ------------------------------------------------------------------ store */
 
 let board = null;
+let store = null;
 let writeTimer = null;
 
 async function loadBoard() {
-  let raw = null;
-  try {
-    raw = await fsp.readFile(DATA_FILE, 'utf8');
-  } catch (err) {
-    if (err.code !== 'ENOENT') throw err;
-  }
+  store = await createStore(process.env, { dataFile: DATA_FILE });
 
-  if (raw === null) {
-    // First run: start from the seed board.
-    board = JSON.parse(await fsp.readFile(SEED_FILE, 'utf8'));
-    await fsp.mkdir(path.dirname(DATA_FILE), { recursive: true });
-    await persistNow();
-  } else {
-    try {
-      board = JSON.parse(raw);
-    } catch (err) {
-      // The board exists but is unreadable. Never silently reseed over it —
-      // that would destroy real work. Set it aside and refuse to start.
-      const aside = `${DATA_FILE}.corrupt-${now().replace(/[:.]/g, '-')}`;
-      await fsp.rename(DATA_FILE, aside);
-      console.error(`\n✖ ${DATA_FILE} is not valid JSON (${err.message}).`);
-      console.error(`  Your data has been preserved at:\n    ${aside}`);
-      console.error(`  Fix that file and rename it back, or delete it to start from the seed.\n`);
+  let doc;
+  try {
+    doc = await store.load();
+  } catch (err) {
+    if (err.fatal) {
+      // e.g. a corrupt board.json — preserved, not overwritten. Don't start.
+      console.error(`\n✖ ${err.message}`);
+      console.error('  Fix or remove that data, then restart.\n');
       process.exit(1);
     }
+    console.error(`\n✖ Could not open the ${store.name} store: ${err.message}`);
+    if (store.name === 'postgres')
+      console.error('  Check DATABASE_URL is correct and the database is reachable.\n');
+    process.exit(1);
+  }
+
+  if (doc === null) {
+    // Empty store → seed it once from data/seed.json.
+    board = JSON.parse(await fsp.readFile(SEED_FILE, 'utf8'));
+    await persistNow();
+  } else {
+    board = doc;
   }
 
   board.agents ||= [];
@@ -57,9 +66,7 @@ async function persistNow() {
   clearTimeout(writeTimer);
   writeTimer = null;
   dirtySince = 0;
-  const tmp = DATA_FILE + '.tmp';
-  await fsp.writeFile(tmp, JSON.stringify(board, null, 2));
-  await fsp.rename(tmp, DATA_FILE);
+  await store.save(board);
 }
 
 // Writes are coalesced, but never postponed indefinitely: a steady stream of
@@ -633,5 +640,6 @@ async function handle(req, res) {
 await loadBoard();
 server.listen(PORT, () => {
   console.log(`workforce board → http://localhost:${PORT}`);
+  console.log(`storage: ${store.describe}`);
   console.log(API_KEY ? 'auth: API_KEY required' : 'auth: open (set API_KEY to lock down)');
 });

@@ -2,9 +2,13 @@ node_modules/
 *.log
 .DS_Store
 
+# Secrets — never commit. Contains DATABASE_URL / API_KEY.
+.env
+
 # Live board state — regenerated from data/seed.json on first run.
 # Keeping it out of git means your real tasks aren't in the repo history.
 # To snapshot it deliberately: git add -f data/board.json
 data/board.json
-data/board.json.tmp
+data/board.json.*.tmp
+data/board.json.corrupt-*
 data/board.backup-*.json

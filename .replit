@@ -1,4 +1,4 @@
-run = "node server.js"
+run = "npm install && node server.js"
 entrypoint = "server.js"
 modules = ["nodejs-22"]
 
@@ -6,12 +6,13 @@ modules = ["nodejs-22"]
 channel = "stable-24_05"
 
 [deployment]
+# Install the one dependency (postgres) before starting.
+build = ["npm", "install"]
 run = ["node", "server.js"]
-# Reserved VM, NOT autoscale: the board is a single process holding state in one
-# JSON file with in-process SSE clients. Autoscale would run several instances
-# (each with its own copy of the board) and wipe the filesystem on every cold
-# start, so the board would silently reset. Keep "vm" unless the store moves to
-# an external database.
+# Reserved VM, NOT autoscale. Even with the board data in Postgres, this server
+# holds its live-update (SSE) clients in memory, so it must be a single always-on
+# instance. Autoscale would run several copies that can't see each other's
+# connections. Keep "vm".
 deploymentTarget = "vm"
 
 [[ports]]

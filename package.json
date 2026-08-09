@@ -1,14 +1,17 @@
 {
   "name": "workforce",
-  "version": "1.0.0",
-  "description": "Kanban board for a human + AI-agent project team. Zero dependencies.",
+  "version": "1.1.0",
+  "description": "Kanban board for a human + AI-agent project team. File storage by default; set DATABASE_URL to use Postgres.",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js"
   },
+  "dependencies": {
+    "postgres": "^3.4.9"
+  },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.12"
   }
 }
