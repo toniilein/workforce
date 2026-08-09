@@ -37,6 +37,18 @@ let tasks = [];
 let filter = { text: '', assignee: '', label: '' };
 let openFile = null;
 let busy = false;
+let permissionProblem = false; // token connected but GitHub refused a write
+
+/* ------------------------------------------------------------------ notices */
+
+// alert() blocks the whole page (it froze the board once), so notices are
+// in-page and non-blocking.
+function toast(message, kind = 'info') {
+  const node = el('div', `toast ${kind}`, message);
+  $('#toasts').appendChild(node);
+  setTimeout(() => node.classList.add('leaving'), kind === 'error' ? 6000 : 2500);
+  setTimeout(() => node.remove(), kind === 'error' ? 6400 : 2900);
+}
 
 /* ------------------------------------------------------------------ github */
 
@@ -239,7 +251,7 @@ function render() {
     for (const task of visible) body.appendChild(cardNode(task));
 
     const add = el('button', 'add-card', '+ Add task');
-    add.addEventListener('click', () => createTask(section.id));
+    add.addEventListener('click', () => startNewCard(section.id, body, add));
     body.appendChild(add);
 
     if (gh.connected) {
@@ -343,14 +355,55 @@ function renderSectionTabs() {
 function renderConnection() {
   const btn = $('#btn-connect');
   btn.textContent = gh.connected ? 'Disconnect' : 'Connect GitHub';
-  $('#banner').hidden = gh.connected;
-  $('#live').classList.toggle('off', !gh.connected);
-  $('#live').title = gh.connected ? 'Connected — changes commit to the repo' : 'Read-only — connect a token to edit';
+
+  const banner = $('#banner');
+  const text = $('#banner-text');
+  const connect = $('#banner-connect');
+  const help = $('#banner-help');
+
+  if (permissionProblem) {
+    banner.hidden = false;
+    banner.classList.add('error');
+    text.innerHTML =
+      "<strong>Your token can read but not write.</strong> On the token page open it, set " +
+      "<strong>Permissions → Contents → Read and write</strong> (and make sure <strong>workforce</strong> " +
+      'is among its repositories), save, then reconnect with the updated token.';
+    connect.textContent = 'Reconnect';
+    help.hidden = false;
+  } else if (!gh.connected) {
+    banner.hidden = false;
+    banner.classList.remove('error');
+    text.innerHTML =
+      '<strong>Read-only.</strong> Connect GitHub to drag cards and edit them — changes are saved as commits in your repo.';
+    connect.textContent = 'Connect GitHub';
+    help.hidden = false;
+  } else {
+    banner.hidden = true;
+  }
+
+  const live = $('#live');
+  live.classList.toggle('off', !gh.connected || permissionProblem);
+  live.title = permissionProblem
+    ? 'Connected, but the token cannot write'
+    : gh.connected
+      ? 'Connected — changes commit to the repo'
+      : 'Read-only — connect a token to edit';
 }
 
 /* ------------------------------------------------------------------ actions */
 
 const byFile = (file) => tasks.find((t) => t.file === file);
+
+// A write failed: surface it where it can be acted on, not in a popup.
+function reportWriteFailure(err) {
+  if (/permission|read but not write/i.test(err.message)) {
+    permissionProblem = true;
+    renderConnection();
+    toast('GitHub refused the change — see the note above the board.', 'error');
+  } else {
+    toast(err.message, 'error');
+  }
+}
 
 async function moveTask(file, status) {
   const task = byFile(file);
@@ -360,53 +413,109 @@ async function moveTask(file, status) {
   render();
   try {
     await saveTask(task, `task: ${task.file.replace(/\.md$/, '')} → ${status}`);
+    permissionProblem = false;
   } catch (err) {
     task.status = from; // put it back where it was
     render();
-    alert(err.message);
+    reportWriteFailure(err);
   }
 }
 
-async function createTask(status) {
-  const title = prompt('Task title');
-  if (!title || !title.trim()) return;
+// Inline composer in the column — no browser prompt.
+function startNewCard(status, body, addBtn) {
+  if (body.querySelector('.new-card-input')) return;
+  const input = el('textarea', 'new-card-input');
+  input.rows = 2;
+  input.placeholder = 'Task title — Enter to save, Esc to cancel';
+  body.insertBefore(input, addBtn);
+  input.focus();
+
+  let settled = false;
+  const finish = async (save) => {
+    if (settled) return;
+    settled = true;
+    const title = input.value.trim();
+    input.remove();
+    if (save && title) await createTask(status, title);
+    else render();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      finish(true);
+    }
+    if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+async function createTask(status, title) {
   if (!gh.connected) {
-    alert('Connect a GitHub token first (sidebar), or add the file on GitHub.');
+    toast('Connect GitHub first — the board is read-only.', 'error');
+    render();
     return;
   }
-  const slug =
-    title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'task';
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'task';
   let file = `${slug}.md`;
   let n = 2;
   while (byFile(file)) file = `${slug}-${n++}.md`;
 
-  const task = { file, title: title.trim(), status, assignee: '', due: '', labels: [], body: '', sha: null };
+  const task = { file, title, status, assignee: '', due: '', labels: [], body: '', sha: null };
+  tasks.push(task); // optimistic, so the card appears immediately
+  render();
   setBusy(true);
   try {
     const res = await putFile(REPO, `${REPO.dir}/${file}`, toMarkdown(task), `task: add ${slug}`);
     task.sha = res.content.sha;
-    tasks.push(task);
-    render();
+    permissionProblem = false;
+    toast('Task created');
   } catch (err) {
-    alert(err.message);
+    tasks = tasks.filter((t) => t !== task); // roll back the card
+    reportWriteFailure(err);
   } finally {
     setBusy(false);
+    render();
   }
+}
+
+// Two-step delete instead of confirm(), which also blocks the page.
+let pendingDelete = null;
+function requestDelete(file) {
+  const btn = $('#d-delete');
+  if (pendingDelete !== file) {
+    pendingDelete = file;
+    btn.textContent = 'Tap again to delete';
+    btn.classList.add('armed');
+    setTimeout(() => {
+      if (pendingDelete === file) {
+        pendingDelete = null;
+        btn.textContent = 'Delete task';
+        btn.classList.remove('armed');
+      }
+    }, 4000);
+    return;
+  }
+  pendingDelete = null;
+  btn.textContent = 'Delete task';
+  btn.classList.remove('armed');
+  removeTask(file);
 }
 
 async function removeTask(file) {
   const task = byFile(file);
-  if (!task || !confirm(`Delete "${task.title}"?\n\nThis deletes ${REPO.dir}/${file} from the repo.`)) return;
+  if (!task) return;
   setBusy(true);
   try {
     await deleteFile(REPO, `${REPO.dir}/${file}`, `task: remove ${file.replace(/\.md$/, '')}`, task.sha);
     tasks = tasks.filter((t) => t.file !== file);
+    permissionProblem = false;
     closeDrawer();
-    render();
+    toast('Task deleted');
   } catch (err) {
-    alert(err.message);
+    reportWriteFailure(err);
   } finally {
     setBusy(false);
+    render();
   }
 }
 
@@ -469,9 +578,18 @@ function renderDrawer() {
 function patchOpen(change, message) {
   const task = byFile(openFile);
   if (!task) return;
+  const before = { ...task };
   Object.assign(task, change);
   render();
-  saveTask(task, message).catch((err) => alert(err.message));
+  saveTask(task, message)
+    .then(() => {
+      permissionProblem = false;
+    })
+    .catch((err) => {
+      Object.assign(task, before); // undo the edit we couldn't save
+      render();
+      reportWriteFailure(err);
+    });
 }
 
 /* -------------------------------------------------------- drag with a finger */
@@ -581,33 +699,59 @@ $('#btn-refresh').addEventListener('click', () => start());
 $('#btn-new').addEventListener('click', () => createTask('todo'));
 $('#repo-link').href = `https://github.com/${REPO.owner}/${REPO.name}/tree/${REPO.branch}/${REPO.dir}`;
 
+function openTokenModal() {
+  $('#token-input').value = '';
+  $('#token-error').hidden = true;
+  $('#token-modal').hidden = false;
+  $('#token-input').focus();
+}
+function closeTokenModal() {
+  $('#token-modal').hidden = true;
+}
+
 async function connectGitHub() {
-  if (gh.connected) {
-    if (!confirm('Disconnect? The board becomes read-only and the token is removed from this browser.')) return;
+  if (gh.connected && !permissionProblem) {
     gh.token = '';
+    permissionProblem = false;
     render();
+    toast('Disconnected — the board is read-only again.');
     return;
   }
-  const token = prompt(
-    'Paste a GitHub token with "Contents: Read and write" on this repo.\n\n' +
-      'Create one at github.com/settings/personal-access-tokens/new — pick this repo only,\n' +
-      'then Permissions → Contents → Read and write.\n\n' +
-      'It is stored only in this browser and sent only to github.com.'
-  );
-  if (!token || !token.trim()) return;
-  gh.token = token.trim();
+  openTokenModal();
+}
+
+async function saveToken() {
+  const input = $('#token-input');
+  const err = $('#token-error');
+  const token = input.value.trim();
+  if (!token) return;
+
+  const previous = gh.token;
+  gh.token = token;
+  $('#token-save').disabled = true;
   try {
     await checkAccess(REPO);
+    // The repo endpoint reports OUR access, not the token's, so it cannot prove
+    // the token may write. The first real save is the honest test.
+    permissionProblem = false;
+    closeTokenModal();
     await start();
-  } catch (err) {
-    gh.token = '';
-    render();
-    alert(err.message);
+    toast('Connected — drag a card to test it saves.');
+  } catch (e) {
+    gh.token = previous;
+    err.textContent = e.message;
+    err.hidden = false;
+  } finally {
+    $('#token-save').disabled = false;
   }
 }
 
 $('#btn-connect').addEventListener('click', connectGitHub);
 $('#banner-connect').addEventListener('click', connectGitHub);
+$('#token-save').addEventListener('click', saveToken);
+$('#token-cancel').addEventListener('click', closeTokenModal);
+$('#token-input').addEventListener('keydown', (e) => e.key === 'Enter' && saveToken());
+$('#token-modal').addEventListener('click', (e) => e.target.id === 'token-modal' && closeTokenModal());
 
 $('#drawer-close').addEventListener('click', closeDrawer);
 $('#scrim').addEventListener('click', closeDrawer);
@@ -633,7 +777,7 @@ $('#d-assignee').addEventListener('change', (e) =>
   patchOpen({ assignee: e.target.value }, `task: assign ${openFile.replace(/\.md$/, '')}`)
 );
 $('#d-status').addEventListener('change', (e) => moveTask(openFile, e.target.value));
-$('#d-delete').addEventListener('click', () => removeTask(openFile));
+$('#d-delete').addEventListener('click', () => requestDelete(openFile));
 
 async function start() {
   try {

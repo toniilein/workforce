@@ -768,3 +768,78 @@ a.side-link, #d-github { text-decoration: none; color: inherit; }
 @media (max-width: 760px) {
   .banner { order: 2; margin: 0 12px 8px; padding: 9px 12px; font-size: 12.5px; }
 }
+
+/* -------------------------------------------------- toasts, modal, notices */
+
+.toasts {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  background: #2b2b26;
+  color: #f7f5ec;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  box-shadow: 0 8px 24px rgba(43, 41, 34, .28);
+  max-width: min(90vw, 460px);
+  text-align: center;
+  transition: opacity .35s ease, transform .35s ease;
+}
+.toast.error { background: #8c3b32; }
+.toast.leaving { opacity: 0; transform: translateY(6px); }
+
+.banner.error { background: #f6dfd9; border-color: #e3c3bb; color: #7d3a30; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(43, 41, 34, .32);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.modal[hidden] { display: none; }
+.modal-card {
+  background: #fffdf8;
+  border-radius: 14px;
+  padding: 20px 22px;
+  width: min(460px, 100%);
+  box-shadow: 0 20px 50px rgba(43, 41, 34, .3);
+}
+.modal-card h2 { margin: 0 0 6px; font-size: 17px; }
+.modal-card .steps { margin: 12px 0; padding-left: 20px; font-size: 13px; line-height: 1.7; color: #55534a; }
+.modal-card .steps a { color: var(--primary); }
+.modal-card input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  outline: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.modal-card input:focus { border-color: #cfcaba; }
+.token-error {
+  margin-top: 8px;
+  color: #8c3b32;
+  font-size: 12.5px;
+  background: #f6dfd9;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.token-error[hidden] { display: none; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
