@@ -6,4 +6,4 @@ due:
 labels: 
 ---
 
-_No description yet._
+find some good restaurants and plan atrip for the last week of august
