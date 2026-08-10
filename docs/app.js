@@ -188,7 +188,9 @@ function parseTask(file, text) {
   const status = (meta.status || 'todo').toLowerCase();
   return {
     file,
-    id: meta.id || '',
+    // The filename is the id, so a file written without the field (an older
+    // client, or a hand-made file) still resolves instead of losing its identity.
+    id: meta.id || (/^LC-\d+$/.test(file.replace(/\.md$/, '')) ? file.replace(/\.md$/, '') : ''),
     title: meta.title || file.replace(/\.md$/, ''), // id-named files have no title to infer
     status: SECTIONS.some((s) => s.id === status) ? status : 'todo',
     assignee: meta.assignee || '',
