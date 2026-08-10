@@ -141,6 +141,12 @@ function toMarkdown(task) {
   ].join('\n');
 }
 
+const slugify = (text) =>
+  text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 44) || 'task';
+
+// What this task's file should be called, given its id and current title.
+const fileNameFor = (task) => (task.id ? `${task.id}-${slugify(task.title)}.md` : task.file);
+
 // Every mutation goes through here: rewrite the file, commit, update in place.
 async function saveTask(task, message) {
   if (!canEdit()) throw new Error('This board is read-only.');
@@ -148,6 +154,49 @@ async function saveTask(task, message) {
   try {
     const res = await putFile(REPO, `${REPO.dir}/${task.file}`, toMarkdown(task), message, task.sha);
     task.sha = res.content.sha; // keep the new sha or the next save 409s
+    render();
+  } catch (err) {
+    // The file moved or vanished under us — an old tab, or a rename elsewhere.
+    // Writing blindly here is what forks a task into a duplicate, so re-resolve
+    // the task by its id and retry once against the file that actually exists.
+    if (task.id && /not found|404|422|sha/i.test(err.message)) {
+      const fresh = (await loadTasks()).find((t) => t.id === task.id);
+      if (fresh && fresh.file !== task.file) {
+        task.file = fresh.file;
+        task.sha = fresh.sha;
+        const res = await putFile(REPO, `${REPO.dir}/${task.file}`, toMarkdown(task), message, task.sha);
+        task.sha = res.content.sha;
+        render();
+        return;
+      }
+    }
+    throw err;
+  } finally {
+    setBusy(false);
+  }
+}
+
+// Renaming a task renames its file too, so LC-004-old-name.md does not linger
+// under a new title. GitHub has no move: write the new path, then drop the old.
+async function renameTaskFile(task, message) {
+  const target = fileNameFor(task);
+  if (target === task.file) return saveTask(task, message);
+
+  if (tasks.some((t) => t !== task && t.file === target)) return saveTask(task, message);
+
+  setBusy(true);
+  const previous = { file: task.file, sha: task.sha };
+  try {
+    const created = await putFile(REPO, `${REPO.dir}/${target}`, toMarkdown(task), message);
+    task.file = target;
+    task.sha = created.content.sha;
+    try {
+      await deleteFile(REPO, `${REPO.dir}/${previous.file}`, `task: rename ${task.id} file`, previous.sha);
+    } catch (err) {
+      // The new file exists, the old one didn't go: say so rather than leaving
+      // a silent duplicate on the board.
+      toast(`Renamed, but ${previous.file} is still there — delete it on GitHub.`, 'error');
+    }
     render();
   } finally {
     setBusy(false);
@@ -954,7 +1003,23 @@ document.addEventListener('keydown', (e) => e.key === 'Escape' && closeDrawer())
 
 on('#d-title', 'change', (e) => {
   const value = e.target.value.trim();
-  if (value) patchOpen({ title: value }, `task: retitle ${openFile.replace(/\.md$/, '')}`);
+  const task = byFile(openFile);
+  if (!value || !task || value === task.title) return;
+
+  const before = task.title;
+  task.title = value;
+  render();
+  // Retitling also renames the file, so the two never drift apart.
+  renameTaskFile(task, `task: retitle ${task.id || task.file}`)
+    .then(() => {
+      openFile = task.file; // the drawer must follow the file to its new name
+      permissionProblem = false;
+    })
+    .catch((err) => {
+      task.title = before;
+      render();
+      reportWriteFailure(err);
+    });
 });
 on('#d-desc', 'change', (e) =>
   patchOpen({ body: e.target.value }, `task: edit ${openFile.replace(/\.md$/, '')}`)

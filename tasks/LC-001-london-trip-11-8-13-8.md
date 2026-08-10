@@ -1,6 +1,6 @@
 ---
 id: LC-001
-title: London Trip 11.8-13.8.
+title: London2 Trip 11.8-13.8.
 status: blocked
 assignee: 007
 due: 
@@ -17,3 +17,5 @@ Blocked — no brief provided. What do you need for this London trip (11-13 Aug)
 - Itinerary planning?
 - Meeting prep?
 - Something else?
+
+dunno
