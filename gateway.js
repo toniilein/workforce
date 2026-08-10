@@ -241,8 +241,22 @@ const server = http.createServer((req, res) => {
 process.on('uncaughtException', (err) => console.error('uncaught:', err));
 process.on('unhandledRejection', (err) => console.error('unhandled rejection:', err));
 
+// The UI is served from this checkout, so a Repl that hasn't pulled serves an
+// old board. Print which commit is running to make that visible immediately.
+function localCommit() {
+  try {
+    const head = fs.readFileSync(path.join(__dirname, '.git', 'HEAD'), 'utf8').trim();
+    const ref = head.startsWith('ref: ') ? head.slice(5) : null;
+    const sha = ref ? fs.readFileSync(path.join(__dirname, '.git', ref), 'utf8').trim() : head;
+    return sha.slice(0, 7);
+  } catch {
+    return 'unknown';
+  }
+}
+
 server.listen(PORT, () => {
   console.log(`board gateway → http://localhost:${PORT}`);
+  console.log(`serving commit: ${localCommit()}`);
   console.log(`repo: ${REPO.owner}/${REPO.name}@${REPO.branch}/${REPO.dir}`);
   console.log(TOKEN ? 'github: token loaded (writes enabled)' : 'github: NO TOKEN — read-only');
   console.log(PASSWORD ? 'access: password required for changes' : 'access: open (set BOARD_PASSWORD to lock)');

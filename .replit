@@ -1,4 +1,4 @@
-run = "node gateway.js"
+run = "git pull --ff-only 2>/dev/null || true; node gateway.js"
 entrypoint = "gateway.js"
 modules = ["nodejs-22"]
 
@@ -6,7 +6,7 @@ modules = ["nodejs-22"]
 channel = "stable-24_05"
 
 [deployment]
-run = ["node", "gateway.js"]
+run = ["bash", "-c", "git pull --ff-only 2>/dev/null || true; node gateway.js"]
 # Reserved VM: one always-on instance. The gateway holds no state itself (the
 # tasks live in the repo), so autoscale would also work — but VM avoids cold
 # starts and keeps the URL responsive.
