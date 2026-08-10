@@ -186,6 +186,20 @@ async function handle(req, res) {
     });
   }
 
+  // Just the file names and their shas: one GitHub call, enough to tell whether
+  // anything changed without downloading every task on a timer.
+  if (p === '/api/tasks/state' && req.method === 'GET') {
+    try {
+      const entries = await github(`${contentsUrl()}?ref=${REPO.branch}`);
+      const state = entries
+        .filter((f) => f.type === 'file' && f.name.endsWith('.md') && f.name.toLowerCase() !== 'readme.md')
+        .map((f) => ({ file: f.name, sha: f.sha }));
+      return send(res, 200, { state });
+    } catch (err) {
+      return send(res, err.status || 502, { error: err.message });
+    }
+  }
+
   if (p === '/api/tasks' && req.method === 'GET') {
     try {
       return send(res, 200, { tasks: await listTasks() });

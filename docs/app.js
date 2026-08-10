@@ -96,6 +96,79 @@ async function loadTasks() {
   return loaded.sort((a, b) => a.title.localeCompare(b.title));
 }
 
+/* ------------------------------------------------------------ live updates */
+
+// A change made anywhere — GitHub's editor, an agent's commit, another device —
+// should appear here without anyone pressing Refresh. Rather than re-downloading
+// every task on a timer, ask only for the file names and their shas (one
+// request) and reload in full when that fingerprint moves.
+async function fetchState() {
+  if (gateway.active) {
+    const res = await fetch('./api/tasks/state');
+    if (!res.ok) throw new Error(`state check failed (${res.status})`);
+    return (await res.json()).state;
+  }
+  const listUrl = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/${REPO.dir}?ref=${REPO.branch}`;
+  return (await ghFetch(listUrl))
+    .filter((f) => f.type === 'file' && f.name.endsWith('.md') && f.name.toLowerCase() !== 'readme.md')
+    .map((f) => ({ file: f.name, sha: f.sha }));
+}
+
+const fingerprint = (state) =>
+  state
+    .map((s) => `${s.file}:${s.sha}`)
+    .sort()
+    .join('|');
+
+const currentFingerprint = () => fingerprint(tasks.map((t) => ({ file: t.file, sha: t.sha })));
+
+let pollTimer = null;
+
+async function pollChanges() {
+  // Never fight a save in flight, or reload while a field is being typed into.
+  if (busy || !navigator.onLine) return;
+  const typing = document.activeElement;
+  if (typing && /INPUT|TEXTAREA|SELECT/.test(typing.tagName) && typing.id !== 'search') return;
+
+  try {
+    const state = await fetchState();
+    if (fingerprint(state) === currentFingerprint()) return;
+
+    const openId = openFile ? byFile(openFile)?.id : null;
+    tasks = await loadTasks();
+
+    // The open card may have been renamed or deleted while we were looking away.
+    if (openFile) {
+      const still = openId ? tasks.find((t) => t.id === openId) : byFile(openFile);
+      if (still) openFile = still.file;
+      else {
+        closeDrawer();
+        toast('That task was removed elsewhere.');
+      }
+    }
+    render();
+  } catch {
+    /* offline or rate-limited: stay quiet and try again next tick */
+  }
+}
+
+function startPolling() {
+  clearInterval(pollTimer);
+  // Authenticated calls are plentiful (5000/hr); anonymous ones are capped at
+  // 60/hr, so an unauthenticated board checks in far less often.
+  const period = gateway.active || gh.connected ? 20000 : 120000;
+  pollTimer = setInterval(() => {
+    if (!document.hidden) pollChanges();
+  }, period);
+}
+
+// Coming back to the tab is the moment you most expect to see other people's
+// changes, so check immediately rather than waiting for the next tick.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) pollChanges();
+});
+window.addEventListener('online', pollChanges);
+
 /* ----------------------------------------------------------- markdown <-> task */
 
 function parseTask(file, text) {
@@ -116,7 +189,7 @@ function parseTask(file, text) {
   return {
     file,
     id: meta.id || '',
-    title: meta.title || file.replace(/\.md$/, '').replace(/[-_]/g, ' '),
+    title: meta.title || file.replace(/\.md$/, ''), // id-named files have no title to infer
     status: SECTIONS.some((s) => s.id === status) ? status : 'todo',
     assignee: meta.assignee || '',
     due: /^\d{4}-\d{2}-\d{2}$/.test(meta.due || '') ? meta.due : '',
@@ -140,12 +213,6 @@ function toMarkdown(task) {
     '',
   ].join('\n');
 }
-
-const slugify = (text) =>
-  text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 44) || 'task';
-
-// What this task's file should be called, given its id and current title.
-const fileNameFor = (task) => (task.id ? `${task.id}-${slugify(task.title)}.md` : task.file);
 
 // Every mutation goes through here: rewrite the file, commit, update in place.
 async function saveTask(task, message) {
@@ -176,32 +243,6 @@ async function saveTask(task, message) {
   }
 }
 
-// Renaming a task renames its file too, so LC-004-old-name.md does not linger
-// under a new title. GitHub has no move: write the new path, then drop the old.
-async function renameTaskFile(task, message) {
-  const target = fileNameFor(task);
-  if (target === task.file) return saveTask(task, message);
-
-  if (tasks.some((t) => t !== task && t.file === target)) return saveTask(task, message);
-
-  setBusy(true);
-  const previous = { file: task.file, sha: task.sha };
-  try {
-    const created = await putFile(REPO, `${REPO.dir}/${target}`, toMarkdown(task), message);
-    task.file = target;
-    task.sha = created.content.sha;
-    try {
-      await deleteFile(REPO, `${REPO.dir}/${previous.file}`, `task: rename ${task.id} file`, previous.sha);
-    } catch (err) {
-      // The new file exists, the old one didn't go: say so rather than leaving
-      // a silent duplicate on the board.
-      toast(`Renamed, but ${previous.file} is still there — delete it on GitHub.`, 'error');
-    }
-    render();
-  } finally {
-    setBusy(false);
-  }
-}
 
 function setBusy(on) {
   busy = on;
@@ -582,13 +623,10 @@ async function createTask(status, title) {
     render();
     return;
   }
-  // Filenames lead with the id, so the folder sorts in creation order and a
-  // file can be matched to a card at a glance: LC-004-book-flights.md
+  // The file is named after the id and nothing else, so retitling a task never
+  // has to move a file — which is what used to fork tasks into duplicates.
   const id = nextTaskId();
-  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 44) || 'task';
-  let file = `${id}-${slug}.md`;
-  let n = 2;
-  while (byFile(file)) file = `${id}-${slug}-${n++}.md`;
+  const file = `${id}.md`;
 
   const task = { file, id, title, status, assignee: '', due: '', labels: [], body: '', sha: null };
   tasks.push(task); // optimistic, so the card appears immediately
@@ -1004,22 +1042,7 @@ document.addEventListener('keydown', (e) => e.key === 'Escape' && closeDrawer())
 on('#d-title', 'change', (e) => {
   const value = e.target.value.trim();
   const task = byFile(openFile);
-  if (!value || !task || value === task.title) return;
-
-  const before = task.title;
-  task.title = value;
-  render();
-  // Retitling also renames the file, so the two never drift apart.
-  renameTaskFile(task, `task: retitle ${task.id || task.file}`)
-    .then(() => {
-      openFile = task.file; // the drawer must follow the file to its new name
-      permissionProblem = false;
-    })
-    .catch((err) => {
-      task.title = before;
-      render();
-      reportWriteFailure(err);
-    });
+  if (value && task && value !== task.title) patchOpen({ title: value }, `task: retitle ${task.id || task.file}`);
 });
 on('#d-desc', 'change', (e) =>
   patchOpen({ body: e.target.value }, `task: edit ${openFile.replace(/\.md$/, '')}`)
@@ -1045,6 +1068,7 @@ async function start() {
     $('#page-meta').textContent = 'Loading from GitHub…';
     tasks = await loadTasks();
     render();
+    startPolling();
   } catch (err) {
     $('#page-meta').textContent = err.message;
     $('#board').innerHTML = '';
