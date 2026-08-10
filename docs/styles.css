@@ -159,14 +159,15 @@ input, select, textarea { font: inherit; color: inherit; }
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 16px;
   padding: 0 26px;
 }
 
+.page-head { min-width: 0; }
+
 .page-head h1 { margin: 0; font-size: 22px; letter-spacing: -0.3px; }
 
-.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
 .topbar-actions input[type="search"] {
   height: 36px;
