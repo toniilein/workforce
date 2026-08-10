@@ -9,7 +9,7 @@ the lc_kanban board (or https://toniilein.github.io/workforce/docs/)
 ---
 id: LC-004
 title: Renew passport before October trip
-status: todo
+status: weekly
 assignee: toni
 due: 2026-09-01
 labels: errands, travel
@@ -27,6 +27,8 @@ Everything under the `---` block is the description — the brief.
 | `assignee` | `toni`, `Adi`, `007` (Pookachu Bot), or empty for unassigned |
 | `due` | `YYYY-MM-DD`, or leave empty |
 | `labels` | comma-separated, or leave empty |
+| `prio` | `true` for urgent — red border, a flag on the card, and its own sidebar filter |
+| `order` | position in the column, low first. Absent means the column is alphabetical. |
 | `parent` | another task's id, e.g. `LC-002` — makes this a subtask of it |
 | `links` | comma-separated ids of related tasks, e.g. `LC-003, LC-004` |
 | `archived` | `true` to keep the task in the repo but off the board |
@@ -35,15 +37,26 @@ Files are named after the id alone: `LC-004.md`. Because the filename never depe
 renaming a task is a one-line edit inside the file — nothing has to move, and a task can never be
 accidentally forked into two files.
 
+## The calendar
+
+The Calendar tab is not a second store. It is every task that has a `due` date, drawn on a month
+grid. Setting `due:` puts a task in the calendar; changing it moves it; clearing it takes it out.
+There is no calendar entry without a task, which is why the calendar and the board can never
+disagree.
+
 ## For agents
 
-You work this board by editing files in this folder with git — no API, no key:
+The full brief — both APIs, the loop, and how to share the board with humans without clobbering
+their edits — is in [BOT.md](../BOT.md) at the repo root. In short:
 
 1. Read your queue: every file where `assignee:` is you and `status:` is not `done`.
-2. Start work: set `status: doing`, commit.
-3. Report: append your findings to the bottom of the file under a `## Notes` heading.
-4. Finish: set `status: done`, commit.
-5. Blocked? Set `status: blocked`, write the question in the file, commit.
+2. Claim it: set `status: weekly`, commit, *before* starting.
+3. Report: append findings to the bottom of the file under a `## Notes` heading.
+4. Hand back: set `status: review` — not `done`. A human confirms.
+5. Stuck? Set `status: focus`, write the question in the file, commit. Do not guess.
+
+`admin` is a human-only column: never take, move or edit a task in it. Prefer `archived: true`
+over deleting, and never delete a task a human created.
 
 Keep one deliverable per file. If you discover more work, add new files rather than growing one.
-Commit messages should read like board activity: `task: renew-passport → doing`.
+Commit messages should read like board activity: `task: LC-004 → review`.

@@ -1,8 +1,11 @@
-# Brief for a bot working this board
+# Brief for an agent working this board
 
-Give this file to any agent (Telegram bot, n8n flow, script) that should work the board.
-Everything it needs is here; there is no server and no custom API — the board *is* the
-`tasks/` folder of the GitHub repo, and GitHub's own API is the interface.
+Give this file to any agent (Telegram bot, n8n flow, Claude, a script) that should work the
+board alongside the humans. Everything it needs is here.
+
+The board **is** the `tasks/` folder of the GitHub repo. There is no database. A task is a
+markdown file; the columns, the calendar, the priority flags and the ordering are all fields
+in those files. Write the file and the board changes for everyone, live.
 
 ## Identity and access
 
@@ -10,25 +13,37 @@ Everything it needs is here; there is no server and no custom API — the board 
 | --- | --- |
 | Repo | `toniilein/workforce`, branch `main` |
 | Task folder | `tasks/` |
+| Attachments | `attachments/<task-id>/` |
 | Your id | `007` (shows on the board as "Pookachu Bot") |
-| Auth | `Authorization: Bearer <YOUR_GITHUB_TOKEN>` on every request |
-| Token needs | *Contents: Read and write* on this repo only |
+| Humans | `toni` (Toni), `Adi` (Adi) |
 
-Keep the token in the bot's own secret storage. Never print it in a chat reply, never
-commit it into a file.
+There are two ways in. Pick one:
+
+**A. The board's own gateway** — simplest. The server holds the token, so the agent needs no
+GitHub credentials at all. Base URL is wherever the board is running (the Replit URL). If the
+board has a `BOARD_PASSWORD` set, send it as an `X-Board-Password` header.
+
+**B. GitHub directly** — for agents that run nowhere near the board.
+`Authorization: Bearer <YOUR_GITHUB_TOKEN>` on every request, with *Contents: Read and write*
+on this repo only. Keep the token in the agent's own secret storage; never print it in a chat
+reply and never commit it to a file.
 
 ## What a task looks like
 
-One task = one `.md` file in `tasks/`:
+One task = one file, named after its id and nothing else — `LC-007.md`:
 
 ```markdown
 ---
-id: LC-002
+id: LC-007
 title: Research risk events in Europe
-status: doing
+status: weekly
 assignee: 007
 due: 2026-08-20
-labels: research
+labels: research, urgent
+prio: true
+order: 2000
+parent: LC-002
+links: LC-003, LC-004
 ---
 
 Everything below the --- block is the brief: context, links, definition of done.
@@ -37,120 +52,162 @@ Everything below the --- block is the brief: context, links, definition of done.
 Findings get appended here.
 ```
 
-`status` must be one of: `backlog`, `weekly`, `focus`, `review`, `done`, `admin`.
+| Field | Meaning |
+| --- | --- |
+| `id` | Permanent name. Quote it when reporting. **Never change it.** |
+| `title` | One line, shown on the card |
+| `status` | Which column — see below |
+| `assignee` | `007`, `toni`, `Adi`, or empty |
+| `due` | `YYYY-MM-DD`. **This is the calendar** — see below |
+| `labels` | Comma-separated, free text |
+| `prio` | `true` marks it urgent: red border and a flag on the card |
+| `order` | Position within its column, low number first. See below |
+| `parent` | Files this task under another (`parent: LC-002`) |
+| `links` | Related tasks (`links: LC-003, LC-004`) |
+| `archived` | `true` retires finished work: stays in the repo, leaves the board |
 
-The flow is `backlog` → `weekly` → `focus` → `review` → `done`. When you finish a task, put it in
-`review` rather than `done`: a human confirms it. `admin` is human-only — never take, move or edit a
-task in that column.
-`parent: LC-002` files a task under another; `links: LC-003, LC-004` records related work.
-`archived: true` retires a finished task — it stays in the repo but leaves the board. Archive rather
-than delete when work is complete.
-`id` is the task's permanent name (`LC-007`): quote it when you report, and never change it.
-The filename is the id and nothing else — `LC-007.md` — so creating a task means writing that file.
 Only change the fields you mean to change — keep the rest of the file intact.
+
+## The columns
+
+`backlog` → `weekly` → `focus` → `review` → `done`, plus `admin`.
+
+- **`admin` is human-only.** Never take, move, create or edit a task in that column.
+- When you finish, put the task in **`review`, not `done`** — a human confirms it.
+- Stuck? Put it in `focus`, write the question in the body, and stop. Do not guess.
+- Prefer `archived: true` over deleting. Never delete a task a human created.
+
+Older files may still say `todo`, `doing` or `blocked`; the board reads those as `backlog`,
+`weekly` and `focus`. Write the new names.
+
+## The calendar
+
+The Calendar tab is not a separate store — it is every task that has a `due` date, drawn on a
+month grid. So:
+
+- **To read the calendar**, list the tasks and keep the ones with a `due` field. Group them by
+  that date. That is exactly what the board does.
+- **To put something in the calendar**, set `due: YYYY-MM-DD` on a task. It appears on that day
+  for everyone, immediately.
+- **To move something in the calendar**, change the `due` date.
+- **To take it off**, set `due:` to empty.
+
+There is no such thing as a calendar entry without a task. If an agent needs to book a day for
+something, it creates a task with a `due` date — which is the point: the calendar and the board
+never disagree, because they are the same files.
+
+Dates are plain `YYYY-MM-DD`, no time and no timezone. A date means that whole day.
+
+## Priority and ordering
+
+`prio: true` is the urgent flag — red border, a flag on the card, and its own filter in the
+sidebar. Use it sparingly or it stops meaning anything. Humans set it too; do not clear a flag
+a human set.
+
+`order` is the card's position in its column, ascending. A column that nobody has hand-sorted
+has no `order` fields at all and shows alphabetically. **An agent should normally leave `order`
+alone** — it is how a human expresses "do this one first". If you must place a card, give it a
+number between its two intended neighbours (they are spaced in thousands, so `1500` sits
+between `1000` and `2000`).
 
 ## The loop
 
-1. **Find your work** — list the folder, read each file, keep the ones with
-   `assignee: 007` and `status:` not `done`.
-2. **Claim it** — set `status: doing` and save. Do this before working so a human can
-   see it is being handled.
+1. **Find your work** — list the tasks, keep the ones with `assignee: 007` whose `status` is
+   not `done` and that are not `archived`. Do the `prio: true` ones first, then by `due`.
+2. **Claim it** — set `status: weekly` and save, before you start, so a human can see it is
+   being handled.
 3. **Do the work** — the file body is the instruction.
-4. **Report** — append your result under a `## Notes` heading in the same file. Write
-   what you found, with links. This is how the human reads your output.
-5. **Finish** — set `status: done` and save.
-6. **Stuck?** — set `status: blocked`, write the question in the body, save. Do not guess.
+4. **Report** — append your result under a `## Notes` heading in the same file. What you found,
+   with links. This is how the human reads your output.
+5. **Hand back** — set `status: review` and save.
 
-Conventions: one deliverable per file; if you discover more work, create new files rather
-than growing one. Commit messages read like board activity: `task: <file> → doing`.
+One deliverable per file. If you discover more work, create new files rather than growing one.
+Commit messages read like board activity: `task: LC-007 → review`.
 
-## The four calls
+## Calls — through the gateway
 
-**1. List the tasks**
+`BOARD` is the board's URL. Add `X-Board-Password: <password>` if one is set.
 
-```
-GET https://api.github.com/repos/toniilein/workforce/contents/tasks
-Authorization: Bearer <TOKEN>
-Accept: application/vnd.github+json
-```
-
-Returns an array; each entry has `name`, `sha` and `download_url`. Ignore `README.md`.
-
-**2. Read one task**
-
-Fetch the entry's `download_url` (plain text, no auth needed on a public repo), or:
+**Read everything** (one call, gives you the whole board and the calendar):
 
 ```
-GET https://api.github.com/repos/toniilein/workforce/contents/tasks/<file>.md
+GET $BOARD/api/tasks
+→ { "tasks": [ { "file": "LC-007.md", "sha": "…", "text": "---\nid: LC-007\n…" } ] }
 ```
 
-which returns `content` **base64-encoded** plus the `sha` you need in order to write.
-
-**3. Write a task** (create or update)
+**Write a task** (creates it if the file is new):
 
 ```
-PUT https://api.github.com/repos/toniilein/workforce/contents/tasks/<file>.md
-Authorization: Bearer <TOKEN>
+PUT $BOARD/api/tasks/LC-007.md
 Content-Type: application/json
 
-{
-  "message": "task: <file> → doing",
+{ "text": "<the WHOLE new file as plain text>",
+  "message": "task: LC-007 → review",
+  "sha": "<the sha from the read>" }
+```
+
+**Delete a task** (rare — prefer `archived: true`):
+
+```
+DELETE $BOARD/api/tasks/LC-007.md
+{ "message": "task: remove LC-007", "sha": "<sha>" }
+```
+
+**Attach a file** to a task:
+
+```
+PUT $BOARD/api/files/LC-007/report.pdf
+{ "content": "<base64 of the file>" }
+```
+
+## Calls — straight to GitHub
+
+**List:** `GET https://api.github.com/repos/toniilein/workforce/contents/tasks`
+Returns `name`, `sha` and `download_url` per entry. Ignore `README.md`.
+
+**Read one:** fetch its `download_url` (plain text, no auth needed — the repo is public), or
+`GET …/contents/tasks/<file>.md`, which returns base64 `content` plus the `sha` you need to write.
+
+**Write:**
+
+```
+PUT https://api.github.com/repos/toniilein/workforce/contents/tasks/LC-007.md
+{ "message": "task: LC-007 → review",
   "content": "<the WHOLE new file, base64-encoded UTF-8>",
   "sha": "<the sha you just read>",
-  "branch": "main"
-}
+  "branch": "main" }
 ```
 
-Two things that trip bots up:
+Two things that trip agents up:
 
 - `content` is the **entire file**, base64 encoded — not a patch, not plain text.
-- `sha` is required when updating an existing file, and must be the current one. Omit it
-  only when creating a new file. If you get **409**, someone edited it first: re-read the
-  file, reapply your change, retry.
+- `sha` is required when updating and must be the current one. Omit it only when creating.
 
-**4. Delete a task** (rare — prefer moving it back to `todo`)
+## Working alongside humans and other agents
 
-```
-DELETE https://api.github.com/repos/toniilein/workforce/contents/tasks/<file>.md
-{ "message": "task: remove <file>", "sha": "<sha>", "branch": "main" }
-```
+Everyone writes the same files at the same time, so:
 
-## Worked example (bash)
-
-```bash
-BOARD=https://api.github.com/repos/toniilein/workforce/contents/tasks
-AUTH="Authorization: Bearer $TOKEN"
-
-# 1. my open tasks
-curl -s "$BOARD" -H "$AUTH" | jq -r '.[] | select(.name != "README.md") | .name' |
-while read -r f; do
-  body=$(curl -s "$BOARD/$f" -H "$AUTH")
-  sha=$(echo "$body" | jq -r .sha)
-  text=$(echo "$body" | jq -r .content | base64 -d)
-  echo "$text" | grep -q '^assignee: 007' || continue
-  echo "$text" | grep -q '^status: done' && continue
-
-  # 2. claim it
-  claimed=$(echo "$text" | sed 's/^status: .*/status: doing/')
-  curl -s -X PUT "$BOARD/$f" -H "$AUTH" -H 'Content-Type: application/json' \
-    -d "$(jq -n --arg m "task: ${f%.md} → doing" --arg c "$(echo "$claimed" | base64)" \
-             --arg s "$sha" '{message:$m, content:$c, sha:$s, branch:"main"}')"
-done
-```
+- **Read immediately before you write.** The `sha` you send must be the one you just read.
+- **On `409`, do not retry blindly** — re-read the file, reapply your change to the *new*
+  content, then write. Blindly retrying is how a task loses someone's edit.
+- **One task per agent.** Claim by setting `status` before working; that is the lock.
+- **Never touch a task assigned to someone else**, and never touch the `admin` column.
+- Humans drag cards while you work. Do not be surprised if `status` or `order` changed under
+  you — take the new value, keep your own field edits.
 
 ## Errors you will meet
 
 | Code | Meaning | Do this |
 | --- | --- | --- |
-| 401 | token invalid or expired | ask the human for a new one |
+| 401 | bad token, or wrong board password | ask the human |
 | 403 | token lacks *Contents: Read and write* | ask the human to fix the token permission |
 | 409 | the file changed since you read it | re-read, reapply, retry |
 | 422 | usually a missing or wrong `sha` | re-read the file and use its current sha |
+| 503 | the gateway has no token — board is read-only | ask the human to set `GITHUB_TOKEN` |
 
 ## Good manners
 
 - Never touch a task that is not assigned to you.
-- Never delete a task a human created; move it back to `todo` and say why in the notes.
-- Keep the frontmatter valid — the board stops showing a card correctly if the `---`
-  block is broken.
+- Never delete a task a human created; archive it and say why in the notes.
+- Keep the frontmatter valid — a broken `---` block breaks the card.
 - Say what you did in the notes, not just that you did it.
