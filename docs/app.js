@@ -1508,6 +1508,14 @@ function renderEventList(task) {
   });
 }
 
+// A textarea clips whatever does not fit its rows, and a task title is exactly
+// the field you must be able to read in full. Grow it to its content instead.
+function autosize(node) {
+  if (!node) return;
+  node.style.height = 'auto';
+  node.style.height = `${node.scrollHeight}px`;
+}
+
 function renderDrawer() {
   const task = byFile(openFile);
   if (!task) return closeDrawer();
@@ -1521,6 +1529,7 @@ function renderDrawer() {
 
   if (!editing) {
     $('#d-title').value = task.title;
+    autosize($('#d-title'));
     $('#d-desc').value = task.body;
     $('#d-start').value = task.start || '';
     $('#d-due').value = task.due;
@@ -1979,6 +1988,7 @@ on('#drawer-close', 'click', closeDrawer);
 on('#scrim', 'click', closeDrawer);
 document.addEventListener('keydown', (e) => e.key === 'Escape' && closeDrawer());
 
+on('#d-title', 'input', (e) => autosize(e.target));
 on('#d-title', 'change', (e) => {
   const value = e.target.value.trim();
   const task = byFile(openFile);
