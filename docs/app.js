@@ -46,7 +46,11 @@ let tasks = [];
 let filter = { text: '', assignee: '', label: '' };
 let openFile = null;
 let busy = false;
-let permissionProblem = false; // token connected but GitHub refused a write
+let permissionProblem = false; // connected but GitHub refused a write
+
+// Gateway mode writes through the server (no browser token); the Pages build
+// writes directly and needs one.
+const canEdit = () => (gateway.active ? gateway.canWrite : gh.connected);
 
 /* ------------------------------------------------------------------ notices */
 
@@ -67,6 +71,16 @@ const editUrl = (file) =>
   `https://github.com/${REPO.owner}/${REPO.name}/edit/${REPO.branch}/${REPO.dir}/${encodeURIComponent(file)}`;
 
 async function loadTasks() {
+  // Through the gateway the server has already read the files for us.
+  if (gateway.active) {
+    const res = await fetch('./api/tasks');
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Server returned ${res.status}`);
+    return body.tasks
+      .map((t) => ({ ...parseTask(t.file, t.text), sha: t.sha }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }
+
   const listUrl = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/${REPO.dir}?ref=${REPO.branch}`;
   const files = (await ghFetch(listUrl)).filter(
     (f) => f.type === 'file' && f.name.endsWith('.md') && f.name.toLowerCase() !== 'readme.md'
@@ -127,7 +141,7 @@ function toMarkdown(task) {
 
 // Every mutation goes through here: rewrite the file, commit, update in place.
 async function saveTask(task, message) {
-  if (!gh.connected) throw new Error('Connect a GitHub token to make changes.');
+  if (!canEdit()) throw new Error('This board is read-only.');
   setBusy(true);
   try {
     const res = await putFile(REPO, `${REPO.dir}/${task.file}`, toMarkdown(task), message, task.sha);
@@ -194,8 +208,8 @@ function matchesFilter(task) {
 function cardNode(task) {
   const card = el('div', `card ${task.status}`);
   card.dataset.file = task.file;
-  card.draggable = gh.connected;
-  card.title = gh.connected ? 'Click to edit · drag to move' : 'Click to open on GitHub';
+  card.draggable = canEdit();
+  card.title = canEdit() ? 'Click to edit · drag to move' : 'Click to open on GitHub';
 
   if (task.labels.length) {
     const row = el('div', 'card-labels');
@@ -228,11 +242,11 @@ function cardNode(task) {
 
   card.addEventListener('click', () => {
     if (card.dataset.suppressClick) return;
-    if (gh.connected) openDrawer(task.file);
+    if (canEdit()) openDrawer(task.file);
     else window.open(editUrl(task.file), '_blank', 'noopener');
   });
 
-  if (gh.connected) {
+  if (canEdit()) {
     card.addEventListener('dragstart', (e) => {
       card.classList.add('dragging');
       e.dataTransfer.setData('text/plain', task.file);
@@ -265,7 +279,7 @@ function render() {
     add.addEventListener('click', () => startNewCard(section.id, body, add));
     body.appendChild(add);
 
-    if (gh.connected) {
+    if (canEdit()) {
       body.addEventListener('dragover', (e) => {
         e.preventDefault();
         wrap.classList.add('drop-target');
@@ -292,7 +306,11 @@ function render() {
 
 function metaLine() {
   const open = tasks.filter((t) => t.status !== 'done').length;
-  const mode = gh.connected ? 'connected' : 'read-only';
+  const mode = gateway.active
+    ? (gateway.canWrite ? 'server-connected' : 'read-only (server has no token)')
+    : gh.connected
+      ? 'connected'
+      : 'read-only';
   return `${open} open task${open === 1 ? '' : 's'} · ${tasks.length} files · ${mode}`;
 }
 
@@ -365,7 +383,33 @@ function renderSectionTabs() {
 
 function renderConnection() {
   const btn = $('#btn-connect');
-  if (btn) btn.textContent = gh.connected ? 'GitHub token' : 'Connect GitHub';
+  // In gateway mode the server holds the token, so none of this UI applies.
+  if (gateway.active) {
+    if (btn) btn.hidden = true;
+    const banner = $('#banner');
+    if (banner) {
+      banner.hidden = gateway.canWrite;
+      banner.classList.toggle('error', !gateway.canWrite);
+      const text = $('#banner-text');
+      if (text)
+        text.innerHTML =
+          '<strong>Read-only.</strong> This board is served by a gateway that has no GitHub token — add GITHUB_TOKEN to its secrets to enable editing.';
+      const connect = $('#banner-connect');
+      if (connect) connect.hidden = true;
+      const help = $('#banner-help');
+      if (help) help.hidden = true;
+    }
+    const live = $('#live');
+    if (live) {
+      live.classList.toggle('off', !gateway.canWrite);
+      live.title = gateway.canWrite ? 'Changes commit through the server' : 'Read-only — server has no token';
+    }
+    return;
+  }
+  if (btn) {
+    btn.hidden = false;
+    btn.textContent = gh.connected ? 'GitHub token' : 'Connect GitHub';
+  }
 
   const banner = $('#banner');
   const text = $('#banner-text');
@@ -462,8 +506,8 @@ function startNewCard(status, body, addBtn) {
 }
 
 async function createTask(status, title) {
-  if (!gh.connected) {
-    toast('Connect GitHub first — the board is read-only.', 'error');
+  if (!canEdit()) {
+    toast('This board is read-only.', 'error');
     render();
     return;
   }
@@ -906,6 +950,7 @@ on('#d-delete', 'click', () => requestDelete(openFile));
 
 async function start() {
   try {
+    if (!gateway.active) await detectGateway();
     $('#page-meta').textContent = 'Loading from GitHub…';
     tasks = await loadTasks();
     render();

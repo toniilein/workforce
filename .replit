@@ -1,18 +1,15 @@
-run = "npm install && node server.js"
-entrypoint = "server.js"
+run = "node gateway.js"
+entrypoint = "gateway.js"
 modules = ["nodejs-22"]
 
 [nix]
 channel = "stable-24_05"
 
 [deployment]
-# Install the one dependency (postgres) before starting.
-build = ["npm", "install"]
-run = ["node", "server.js"]
-# Reserved VM, NOT autoscale. Even with the board data in Postgres, this server
-# holds its live-update (SSE) clients in memory, so it must be a single always-on
-# instance. Autoscale would run several copies that can't see each other's
-# connections. Keep "vm".
+run = ["node", "gateway.js"]
+# Reserved VM: one always-on instance. The gateway holds no state itself (the
+# tasks live in the repo), so autoscale would also work — but VM avoids cold
+# starts and keeps the URL responsive.
 deploymentTarget = "vm"
 
 [[ports]]

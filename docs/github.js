@@ -8,6 +8,44 @@
  * Without a token everything still loads; the board is simply read-only.
  */
 
+/*
+ * Two ways to reach GitHub:
+ *
+ *   gateway  — served by gateway.js, which holds the token server-side. The
+ *              browser needs no token at all; it calls same-origin /api routes.
+ *   direct   — the GitHub Pages build, where the page must carry a token
+ *              because a static site cannot keep a secret.
+ *
+ * The mode is detected once at startup by asking for /api/config.
+ */
+const gateway = { active: false, canWrite: false, needsPassword: false };
+
+async function detectGateway() {
+  try {
+    const res = await fetch('./api/config', { headers: { Accept: 'application/json' } });
+    if (!res.ok) return false;
+    const cfg = await res.json();
+    if (cfg.mode !== 'gateway') return false;
+    gateway.active = true;
+    gateway.canWrite = Boolean(cfg.canWrite);
+    gateway.needsPassword = Boolean(cfg.needsPassword);
+    return true;
+  } catch {
+    return false; // static hosting: no gateway, use the token path
+  }
+}
+
+const PASSWORD_KEY = 'board.gateway.password';
+const boardPassword = {
+  get value() {
+    return localStorage.getItem(PASSWORD_KEY) || '';
+  },
+  set value(v) {
+    if (v) localStorage.setItem(PASSWORD_KEY, v);
+    else localStorage.removeItem(PASSWORD_KEY);
+  },
+};
+
 const TOKEN_KEY = 'board.gh.token';
 const SAVED_KEY = 'board.gh.savedAt';
 
@@ -71,8 +109,27 @@ function toBase64(text) {
 const contentsUrl = (repo, path) =>
   `https://api.github.com/repos/${repo.owner}/${repo.name}/contents/${encodeURIComponent(path).replace(/%2F/g, '/')}`;
 
+// Through the gateway the browser sends plain text and no credential; the
+// server does the base64 and adds the token.
+async function gatewayWrite(method, file, payload) {
+  const res = await fetch(`./api/tasks/${encodeURIComponent(file)}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(boardPassword.value ? { 'X-Board-Password': boardPassword.value } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Server returned ${res.status}`);
+  return { content: { sha: body.sha } };
+}
+
+const fileNameOf = (fullPath) => fullPath.split('/').pop();
+
 // Create or update a file. `sha` must be the current blob sha when replacing.
 async function putFile(repo, path, text, message, sha) {
+  if (gateway.active) return gatewayWrite('PUT', fileNameOf(path), { text, message, sha });
   return ghFetch(contentsUrl(repo, path), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -86,6 +143,7 @@ async function putFile(repo, path, text, message, sha) {
 }
 
 async function deleteFile(repo, path, message, sha) {
+  if (gateway.active) return gatewayWrite('DELETE', fileNameOf(path), { message, sha });
   return ghFetch(contentsUrl(repo, path), {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
