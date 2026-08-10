@@ -115,6 +115,7 @@ function parseTask(file, text) {
   const status = (meta.status || 'todo').toLowerCase();
   return {
     file,
+    id: meta.id || '',
     title: meta.title || file.replace(/\.md$/, '').replace(/[-_]/g, ' '),
     status: SECTIONS.some((s) => s.id === status) ? status : 'todo',
     assignee: meta.assignee || '',
@@ -127,6 +128,7 @@ function parseTask(file, text) {
 function toMarkdown(task) {
   return [
     '---',
+    ...(task.id ? [`id: ${task.id}`] : []),
     `title: ${task.title}`,
     `status: ${task.status}`,
     `assignee: ${task.assignee || ''}`,
@@ -201,7 +203,7 @@ function matchesFilter(task) {
     if (task.assignee) return false;
   } else if (filter.assignee && task.assignee !== filter.assignee) return false;
   if (filter.label && !task.labels.includes(filter.label)) return false;
-  if (filter.text && !`${task.title} ${task.body}`.toLowerCase().includes(filter.text)) return false;
+  if (filter.text && !`${task.id} ${task.title} ${task.body}`.toLowerCase().includes(filter.text)) return false;
   return true;
 }
 
@@ -226,6 +228,7 @@ function cardNode(task) {
   card.appendChild(el('div', 'card-title', task.title));
 
   const meta = el('div', 'card-meta');
+  if (task.id) meta.appendChild(el('span', 'task-id', task.id));
   if (task.due && task.status !== 'done')
     meta.appendChild(el('span', 'due' + (isOverdue(task.due) ? ' overdue' : ''), formatDate(task.due)));
 
@@ -505,6 +508,17 @@ function startNewCard(status, body, addBtn) {
   input.addEventListener('blur', () => finish(true));
 }
 
+// Sequential and human-quotable: "look at LC-014". Never reuses a number, so an
+// id keeps pointing at the same task even after files are renamed or deleted.
+function nextTaskId() {
+  const used = tasks
+    .map((t) => /^LC-(\d+)$/.exec(t.id || ''))
+    .filter(Boolean)
+    .map((m) => Number(m[1]));
+  const next = used.length ? Math.max(...used) + 1 : 1;
+  return `LC-${String(next).padStart(3, '0')}`;
+}
+
 async function createTask(status, title) {
   if (!canEdit()) {
     toast('This board is read-only.', 'error');
@@ -516,7 +530,7 @@ async function createTask(status, title) {
   let n = 2;
   while (byFile(file)) file = `${slug}-${n++}.md`;
 
-  const task = { file, title, status, assignee: '', due: '', labels: [], body: '', sha: null };
+  const task = { file, id: nextTaskId(), title, status, assignee: '', due: '', labels: [], body: '', sha: null };
   tasks.push(task); // optimistic, so the card appears immediately
   render();
   setBusy(true);
@@ -627,7 +641,7 @@ function renderDrawer() {
   }
   status.value = task.status;
 
-  $('#d-file').textContent = `${REPO.dir}/${task.file}`;
+  $('#d-file').textContent = `${task.id ? task.id + ' · ' : ''}${REPO.dir}/${task.file}`;
   $('#d-github').href = editUrl(task.file);
 }
 

@@ -1,4 +1,5 @@
 ---
+id: LC-001
 title: London Trip 11.8-13.8.
 status: blocked
 assignee: 007

@@ -1,4 +1,5 @@
 ---
+id: LC-002
 title: Research Risk Events in Europe
 status: review
 assignee: 007

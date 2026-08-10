@@ -23,6 +23,7 @@ One task = one `.md` file in `tasks/`:
 
 ```markdown
 ---
+id: LC-002
 title: Research risk events in Europe
 status: doing
 assignee: 007
@@ -37,6 +38,7 @@ Findings get appended here.
 ```
 
 `status` must be one of: `todo`, `doing`, `blocked`, `review`, `done`.
+`id` is the task's permanent name (`LC-007`): quote it when you report, and never change it.
 Only change the fields you mean to change — keep the rest of the file intact.
 
 ## The loop

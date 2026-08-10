@@ -7,6 +7,7 @@ https://toniilein.github.io/workforce/
 
 ```markdown
 ---
+id: LC-004
 title: Renew passport before October trip
 status: todo
 assignee: toni
@@ -20,6 +21,7 @@ Everything under the `---` block is the description — the brief.
 
 | Field | Values |
 | --- | --- |
+| `id` | `LC-###`, assigned once and never changed — the stable way to refer to a task |
 | `title` | any text. Falls back to the filename if missing. |
 | `status` | `todo`, `doing`, `blocked`, `done` — decides the column. Default `todo`. |
 | `assignee` | `toni`, `jasmin`, `mucki`, or empty for unassigned |
