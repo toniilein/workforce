@@ -226,6 +226,13 @@ function parseTask(file, text) {
     status: SECTIONS.some((s) => s.id === status) ? status : 'backlog',
     assignee: meta.assignee || '',
     due: /^\d{4}-\d{2}-\d{2}$/.test(meta.due || '') ? meta.due : '',
+    // Optional first day. With `due` as the last day this makes the task an
+    // event that occupies a span of days rather than a single deadline.
+    start: /^\d{4}-\d{2}-\d{2}$/.test(meta.start || '') ? meta.start : '',
+    // Any other dates the task carries — a trip's flights, a deadline mentioned
+    // in the brief. Agents append here after reading a task, so every date in a
+    // task ends up on the calendar rather than only its due date.
+    events: parseEvents(meta.events),
     labels: (meta.labels || '').split(',').map((s) => s.trim()).filter(Boolean),
     parent: (meta.parent || '').trim(),
     links: (meta.links || '').split(',').map((s) => s.trim()).filter(Boolean),
@@ -239,6 +246,24 @@ function parseTask(file, text) {
   };
 }
 
+// `events: 2026-08-11..2026-08-13 London trip, 2026-09-01 Invoice due`
+// One line, comma separated, each entry a date or a date range and a label.
+function parseEvents(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((part) => {
+      const m = /^\s*(\d{4}-\d{2}-\d{2})(?:\s*\.\.\s*(\d{4}-\d{2}-\d{2}))?\s*(.*)$/.exec(part);
+      if (!m) return null;
+      const from = m[1];
+      const to = m[2] && m[2] >= from ? m[2] : from;
+      return { from, to, label: m[3].trim() };
+    })
+    .filter(Boolean);
+}
+
+const eventsToField = (list) =>
+  list.map((e) => `${e.from}${e.to && e.to !== e.from ? `..${e.to}` : ''}${e.label ? ' ' + e.label : ''}`).join(', ');
+
 function toMarkdown(task) {
   return [
     '---',
@@ -246,6 +271,8 @@ function toMarkdown(task) {
     `title: ${task.title}`,
     `status: ${task.status}`,
     `assignee: ${task.assignee || ''}`,
+    ...(task.start ? [`start: ${task.start}`] : []),
+    ...(task.events?.length ? [`events: ${eventsToField(task.events)}`] : []),
     `due: ${task.due || ''}`,
     `labels: ${task.labels.join(', ')}`,
     ...(task.parent ? [`parent: ${task.parent}`] : []),
@@ -774,6 +801,34 @@ function setView(next) {
   render();
 }
 
+// Everything a task puts on the calendar: its own dates, plus every event
+// listed on it. One function, so the calendar and the card never disagree.
+function calendarEntries(task) {
+  const out = [];
+  if (task.due) {
+    const from = task.start && task.start <= task.due ? task.start : task.due;
+    out.push({ from, to: task.due, label: task.title, own: true });
+  }
+  for (const ev of task.events || []) out.push({ ...ev, label: ev.label || task.title });
+  return out;
+}
+
+// Every day an entry occupies, tagged so the calendar can draw a continuous
+// bar: 'start', 'mid', 'end' for a range, and null for a single day.
+function spanDays(entry) {
+  if (entry.from === entry.to) return [[entry.to, null]];
+  const out = [];
+  const cursor = parseDay(entry.from);
+  const stop = parseDay(entry.to);
+  // A runaway range would render thousands of cells; a year is already absurd.
+  for (let guard = 0; cursor <= stop && guard < 400; guard++) {
+    const iso = isoDay(cursor);
+    out.push([iso, iso === entry.from ? 'start' : iso === entry.to ? 'end' : 'mid']);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return out;
+}
+
 function renderCalendar() {
   const grid = $('#cal-grid');
   if (!grid) return;
@@ -783,15 +838,20 @@ function renderCalendar() {
   const title = $('#cal-title');
   if (title) title.textContent = calMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 
-  // Only dated, visible tasks land on the grid.
-  const dated = tasks.filter((t) => t.due && onBoard(t) && matchesFilter(t));
+  // Dated tasks land on the grid. A task with `start` occupies every day from
+  // there to `due`, so a three-day trip reads as three days rather than one.
+  const visible = tasks.filter((t) => onBoard(t) && matchesFilter(t));
   const byDay = new Map();
-  for (const task of dated) {
-    if (!byDay.has(task.due)) byDay.set(task.due, []);
-    byDay.get(task.due).push(task);
+  for (const task of visible) {
+    for (const entry of calendarEntries(task)) {
+      for (const [iso, part] of spanDays(entry)) {
+        if (!byDay.has(iso)) byDay.set(iso, []);
+        byDay.get(iso).push({ task, entry, part });
+      }
+    }
   }
 
-  const undated = tasks.filter((t) => !t.due && onBoard(t) && matchesFilter(t)).length;
+  const undated = visible.filter((t) => !calendarEntries(t).length).length;
   const note = $('#cal-undated');
   if (note) note.textContent = undated ? `${undated} task${undated === 1 ? '' : 's'} without a date` : '';
 
@@ -814,12 +874,26 @@ function renderCalendar() {
     const cell = el('div', 'cal-day' + (outside ? ' outside' : '') + (iso === isoDay(today) ? ' today' : ''));
     cell.appendChild(el('div', 'cal-date', String(day.getDate())));
 
-    for (const task of byDay.get(iso) || []) {
-      const chip = el('button', 'cal-task' + (task.status === 'done' ? ' done' : ''));
-      const dot = el('span', 'linkdot');
-      dot.style.background = SECTIONS.find((sec) => sec.id === task.status)?.color || '#9a988c';
-      chip.append(dot, el('span', 'cal-task-title', task.title));
-      chip.title = `${task.id} · ${task.title} (${task.status})`;
+    for (const { task, entry, part } of byDay.get(iso) || []) {
+      const chip = el(
+        'button',
+        `cal-task${task.status === 'done' ? ' done' : ''}${part ? ' span-' + part : ''}`
+      );
+      const colour = SECTIONS.find((sec) => sec.id === task.status)?.color || '#9a988c';
+      // A one-day task keeps its dot; a span is drawn as a bar in the same
+      // colour, so the eye follows it across the week without reading titles.
+      if (part) chip.style.setProperty('--c', colour);
+      else {
+        const dot = el('span', 'linkdot');
+        dot.style.background = colour;
+        chip.appendChild(dot);
+      }
+      // Only the first day of a span carries the title; the rest continue it.
+      chip.appendChild(el('span', 'cal-task-title', part && part !== 'start' ? '' : entry.label));
+      chip.title =
+        entry.from === entry.to
+          ? `${task.id} · ${entry.label}`
+          : `${task.id} · ${entry.label} (${entry.from} → ${entry.to})`;
       chip.addEventListener('click', () => openDrawer(task.file));
       cell.appendChild(chip);
     }
@@ -1394,6 +1468,38 @@ function closeDrawer() {
   $('#scrim').hidden = true;
 }
 
+// The dates a task carries, listed so you can see and remove what an agent
+// added after reading the brief.
+function renderEventList(task) {
+  const list = $('#d-events');
+  if (!list) return;
+  list.innerHTML = '';
+  const own = task.due
+    ? [{ from: task.start && task.start <= task.due ? task.start : task.due, to: task.due, label: 'Due', own: true }]
+    : [];
+  const rows = [...own, ...(task.events || [])];
+  if (!rows.length) {
+    list.appendChild(el('li', 'muted small', 'No dates yet'));
+    return;
+  }
+  rows.forEach((ev, i) => {
+    const li = el('li');
+    const when = ev.from === ev.to ? formatDate(ev.from) : `${formatDate(ev.from)} – ${formatDate(ev.to)}`;
+    li.append(el('span', 'task-id', when), el('span', null, ev.label || task.title));
+    // The due date is edited by its own field above, not removed from here.
+    if (!ev.own && canEdit()) {
+      const drop = el('button', 'icon-btn', '✕');
+      drop.title = 'Remove this date';
+      drop.addEventListener('click', () => {
+        const next = (task.events || []).filter((_, n) => n !== i - own.length);
+        patchOpen({ events: next }, `task: dates ${task.file.replace(/\.md$/, '')}`);
+      });
+      li.appendChild(drop);
+    }
+    list.appendChild(li);
+  });
+}
+
 function renderDrawer() {
   const task = byFile(openFile);
   if (!task) return closeDrawer();
@@ -1408,12 +1514,15 @@ function renderDrawer() {
   if (!editing) {
     $('#d-title').value = task.title;
     $('#d-desc').value = task.body;
+    $('#d-start').value = task.start || '';
     $('#d-due').value = task.due;
     $('#d-labels').value = task.labels.join(', ');
   }
 
   const prio = $('#d-prio');
   if (prio) prio.checked = !!task.prio;
+
+  renderEventList(task);
 
   const assignee = $('#d-assignee');
   assignee.innerHTML = '<option value="">Unassigned</option>';
@@ -1873,6 +1982,14 @@ on('#d-desc', 'change', (e) =>
 on('#d-due', 'change', (e) =>
   patchOpen({ due: e.target.value }, `task: due ${openFile.replace(/\.md$/, '')}`)
 );
+on('#d-start', 'change', (e) => {
+  const task = byFile(openFile);
+  if (!task) return;
+  const start = e.target.value;
+  // A start with no end is just a start; give it one so it lands somewhere.
+  const patch = start && !task.due ? { start, due: start } : { start };
+  patchOpen(patch, `task: start ${openFile.replace(/\.md$/, '')}`);
+});
 on('#d-labels', 'change', (e) =>
   patchOpen(
     { labels: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) },
@@ -1883,6 +2000,18 @@ on('#d-assignee', 'change', (e) =>
   patchOpen({ assignee: e.target.value }, `task: assign ${openFile.replace(/\.md$/, '')}`)
 );
 on('#d-status', 'change', (e) => moveTask(openFile, e.target.value));
+on('#d-event-add', 'click', () => {
+  const task = byFile(openFile);
+  const from = $('#d-event-from')?.value;
+  if (!task || !from) return toast('Pick a date first.', 'error');
+  const to = $('#d-event-to')?.value;
+  const label = ($('#d-event-label')?.value || '').trim();
+  const next = [...(task.events || []), { from, to: to && to >= from ? to : from, label }];
+  $('#d-event-from').value = '';
+  $('#d-event-to').value = '';
+  $('#d-event-label').value = '';
+  patchOpen({ events: next }, `task: dates ${task.file.replace(/\.md$/, '')}`);
+});
 on('#d-prio', 'change', (e) => {
   const task = byFile(openFile);
   if (task) setPrio(task, e.target.checked);

@@ -6,7 +6,7 @@
 <title>PookieWookie</title>
 <!-- ?v= is bumped on every change: GitHub Pages caches assets for 10 minutes,
      so without it the browser keeps running the previous app.js. -->
-<link rel="stylesheet" href="./styles.css?v=56" />
+<link rel="stylesheet" href="./styles.css?v=61" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%233c4433'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f5ec' font-family='Georgia'>P</text></svg>" />
 </head>
 <body>
@@ -89,6 +89,10 @@
     <select id="d-status"></select>
   </div>
   <div class="d-row">
+    <label>Start</label>
+    <input id="d-start" type="date" title="Optional. With a due date this makes the task a multi-day event." />
+  </div>
+  <div class="d-row">
     <label>Due</label>
     <input id="d-due" type="date" />
   </div>
@@ -107,6 +111,17 @@
   <div class="d-row">
     <label>Related</label>
     <input id="d-links" placeholder="LC-002, LC-005" />
+  </div>
+
+  <div id="d-events-wrap">
+    <label class="d-label">Dates <span class="muted">— everything this task puts on the calendar</span></label>
+    <ul id="d-events" class="linklist"></ul>
+    <div class="checklist-add">
+      <input id="d-event-from" type="date" title="Date, or first day of a range" />
+      <input id="d-event-to" type="date" title="Last day (optional)" />
+      <input id="d-event-label" placeholder="What is it? (optional)" />
+      <button id="d-event-add" class="ghost small">Add</button>
+    </div>
   </div>
 
   <div id="d-subtasks-wrap" hidden>
@@ -192,7 +207,7 @@
 
 <div id="scrim" class="scrim" hidden></div>
 
-<script src="./github.js?v=56"></script>
-<script src="./app.js?v=56"></script>
+<script src="./github.js?v=61"></script>
+<script src="./app.js?v=61"></script>
 </body>
 </html>

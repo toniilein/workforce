@@ -1019,7 +1019,7 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
 .cal-head h2 { margin: 0; font-size: 16px; min-width: 190px; }
 .cal-head .muted { margin-left: auto; }
 
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .cal-weekday {
   font-size: 11px;
   font-weight: 700;
@@ -1037,6 +1037,7 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 .cal-day.outside { background: transparent; border-color: var(--line-soft); }
 .cal-day.outside .cal-date { color: #c2bfb2; }
@@ -1054,16 +1055,57 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
   padding: 4px 6px;
   font-size: 12px;
   text-align: left;
+  min-width: 0;
+  max-width: 100%;
 }
 .cal-task:hover { background: #ece8db; }
 .cal-task.done .cal-task-title { text-decoration: line-through; color: var(--muted); }
-.cal-task-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-task-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
+.cal-task .linkdot { flex: 0 0 auto; }
+
+/* Multi-day events: the same chip tinted in the column's colour and squared off
+   where the run continues, so a trip reads as one bar across the week. Only the
+   first day carries the title — repeating it on every cell is noise. */
+.cal-task[class*="span-"] { position: relative; z-index: 1; }
+.cal-task[class*="span-"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--c);
+  opacity: .18;
+}
+.cal-task[class*="span-"] > * { position: relative; }
+/* Reach across the cell padding and the grid gap so a run reads as one bar
+   rather than three chips that happen to match. --reach is that distance. */
+.cal-grid { --reach: 12px; }
+.cal-task.span-start, .cal-task.span-mid { margin-right: calc(var(--reach) * -1); }
+.cal-task.span-mid, .cal-task.span-end { margin-left: calc(var(--reach) * -1); }
+.cal-task.span-start { border-radius: 6px 0 0 6px; }
+.cal-task.span-mid { border-radius: 0; }
+.cal-task.span-end { border-radius: 0 6px 6px 0; }
+.cal-task.span-mid, .cal-task.span-end { min-height: 25px; }
+
+/* A run that crosses into the next week must close at the week's edges rather
+   than poke out of the grid. Cells start at child 8, after the day names. */
+.cal-day:nth-child(7n + 1) .cal-task[class*="span-"] {
+  margin-left: 0;
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+.cal-day:nth-child(7n) .cal-task[class*="span-"] {
+  margin-right: 0;
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
 
 @media (max-width: 760px) {
   .calendar { padding: 8px 12px 80px; }
   .cal-grid { gap: 3px; }
   .cal-day { min-height: 62px; padding: 4px; border-radius: 8px; }
   .cal-task { font-size: 10.5px; padding: 2px 4px; }
+  .cal-task.span-mid, .cal-task.span-end { min-height: 18px; }
+  .cal-grid { --reach: 7px; }
   .cal-head h2 { font-size: 14px; min-width: 0; }
   .viewtabs { flex: 0 0 auto; margin: 0 6px 0 0; padding: 2px; border-radius: 999px; }
   .viewtab { padding: 5px 12px; font-size: 12.5px; border-radius: 999px; }
@@ -1190,3 +1232,11 @@ body.sidebar-off .sidebar {
 .prio-chip .micon { color: var(--danger); display: flex; }
 .prio-chip .lname { flex: 1; }
 .prio-chip.active { background: #fff; border-color: var(--danger); }
+
+/* The dates a task carries, and the row that adds one. */
+#d-events-wrap .checklist-add { flex-wrap: wrap; }
+#d-events-wrap .checklist-add input[type="date"] { flex: 0 0 auto; width: auto; }
+#d-events-wrap .checklist-add input:not([type="date"]) { flex: 1 1 120px; min-width: 0; }
+#d-events .task-id { flex: 0 0 auto; }
+#d-events li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+#d-events li .icon-btn { margin-left: auto; }

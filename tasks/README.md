@@ -25,7 +25,9 @@ Everything under the `---` block is the description — the brief.
 | `title` | any text. Falls back to the filename if missing. |
 | `status` | `backlog`, `weekly`, `focus`, `review`, `done`, `admin` — decides the column. Default `backlog`. |
 | `assignee` | `toni`, `Adi`, `007` (Pookachu Bot), or empty for unassigned |
-| `due` | `YYYY-MM-DD`, or leave empty |
+| `due` | `YYYY-MM-DD`, or leave empty — one day on the calendar |
+| `start` | `YYYY-MM-DD`, optional. With `due` the task spans those days on the calendar. |
+| `events` | further dates, comma separated: `2026-08-11..2026-08-13 London trip, 2026-09-01 Invoice` |
 | `labels` | comma-separated, or leave empty |
 | `prio` | `true` for urgent — red border, a flag on the card, and its own sidebar filter |
 | `order` | position in the column, low first. Absent means the column is alphabetical. |
@@ -39,10 +41,10 @@ accidentally forked into two files.
 
 ## The calendar
 
-The Calendar tab is not a second store. It is every task that has a `due` date, drawn on a month
-grid. Setting `due:` puts a task in the calendar; changing it moves it; clearing it takes it out.
-There is no calendar entry without a task, which is why the calendar and the board can never
-disagree.
+The Calendar tab is not a second store. It is every date any task carries, drawn on a month grid:
+`due` for a deadline, `start` + `due` for a task that spans days, and `events` for any number of
+further dates. There is no calendar entry without a task, which is why the calendar and the board
+can never disagree.
 
 ## For agents
 

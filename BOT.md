@@ -80,23 +80,53 @@ Only change the fields you mean to change — keep the rest of the file intact.
 Older files may still say `todo`, `doing` or `blocked`; the board reads those as `backlog`,
 `weekly` and `focus`. Write the new names.
 
-## The calendar
+## The calendar, and creating events
 
-The Calendar tab is not a separate store — it is every task that has a `due` date, drawn on a
-month grid. So:
+The Calendar tab is not a separate store — it is every date any task carries, drawn on a month
+grid. A task can carry three kinds:
 
-- **To read the calendar**, list the tasks and keep the ones with a `due` field. Group them by
-  that date. That is exactly what the board does.
-- **To put something in the calendar**, set `due: YYYY-MM-DD` on a task. It appears on that day
-  for everyone, immediately.
-- **To move something in the calendar**, change the `due` date.
-- **To take it off**, set `due:` to empty.
+| Field | Puts on the calendar |
+| --- | --- |
+| `due: 2026-08-13` | one day — the deadline |
+| `start: 2026-08-11` with `due: 2026-08-13` | the task itself, as a bar across 11–13 |
+| `events: …` | any number of further dates, each its own entry |
 
-There is no such thing as a calendar entry without a task. If an agent needs to book a day for
-something, it creates a task with a `due` date — which is the point: the calendar and the board
-never disagree, because they are the same files.
+**`events` is how an agent adds dates it found while reading a task.** One line, comma
+separated. Each entry is a date, optionally `..` a second date for a range, then a label:
 
-Dates are plain `YYYY-MM-DD`, no time and no timezone. A date means that whole day.
+```
+events: 2026-08-11..2026-08-13 London trip, 2026-08-11 Flight out 09:40, 2026-08-13 Flight back
+```
+
+That renders as a three-day bar plus two single-day entries. Without a label an entry shows the
+task's title.
+
+### Reading dates out of a task and putting them on the calendar
+
+This is the job: a task called *Plan London Trip 11-13 Aug* with a brief mentioning flights has
+its dates buried in prose, where the calendar cannot see them. So:
+
+1. Read the task — title and body.
+2. Pull out every date you can resolve to a real day. Resolve relative ones ("next Friday")
+   against today, and bare ones ("11-13 Aug") against the current year unless the text says
+   otherwise.
+3. Append them to `events:`, each with a short label. **Keep what is already there** — read the
+   field, add to it, write it back.
+4. Write the file. They appear on everyone's calendar immediately.
+
+If you are unsure a date is real, say so in `## Notes` rather than inventing a calendar entry.
+A wrong date on a shared calendar is worse than a missing one.
+
+Rules that keep this from going wrong:
+
+- **`YYYY-MM-DD` only.** No times inside the date, no timezone. A date means that whole day —
+  put a time in the label if it matters (`2026-08-11 Flight out 09:40`).
+- **Never delete a date a human entered.** Add yours; leave theirs.
+- **Do not duplicate.** Before appending, check the date is not already in `events` or in
+  `due`/`start`.
+- **An event always belongs to a task.** There is no calendar entry without one. If something
+  needs a day of its own and belongs to no existing task, create a task for it with a `due`
+  date — that is what keeps the board and the calendar from ever disagreeing.
 
 ## Priority and ordering
 
