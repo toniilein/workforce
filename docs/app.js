@@ -420,7 +420,15 @@ function renderConnection() {
   const help = $('#banner-help');
   if (!banner || !text || !connect) return;
 
-  if (permissionProblem) {
+  if (tokenRejected) {
+    banner.hidden = false;
+    banner.classList.add('error');
+    text.innerHTML =
+      '<strong>Your saved token was rejected</strong> — it was probably regenerated or revoked. ' +
+      'The board is showing tasks read-only. Save the current token to edit again.';
+    connect.textContent = 'Update token';
+    if (help) help.hidden = false;
+  } else if (permissionProblem) {
     banner.hidden = false;
     banner.classList.add('error');
     text.innerHTML =
@@ -441,7 +449,7 @@ function renderConnection() {
   }
 
   const live = $('#live');
-  live.classList.toggle('off', !gh.connected || permissionProblem);
+  live.classList.toggle('off', !gh.connected || permissionProblem || tokenRejected);
   live.title = permissionProblem
     ? 'Connected, but the token cannot write'
     : gh.connected
@@ -910,6 +918,7 @@ async function saveToken() {
     // The repo endpoint reports OUR access, not the token's, so it cannot prove
     // the token may write. The first real save is the honest test.
     permissionProblem = false;
+    tokenRejected = false;
     await keepStorage();
     await offerToRemember(token);
     renderTokenStatus();

@@ -46,6 +46,10 @@ const boardPassword = {
   },
 };
 
+// Set when GitHub refuses the stored token, so the UI can say so while the
+// board keeps working read-only.
+let tokenRejected = false;
+
 const TOKEN_KEY = 'board.gh.token';
 const SAVED_KEY = 'board.gh.savedAt';
 
@@ -85,6 +89,17 @@ function ghHeaders(extra = {}) {
 async function ghFetch(url, options = {}) {
   const res = await fetch(url, { ...options, headers: ghHeaders(options.headers) });
   if (res.ok) return res.status === 204 ? null : res.json();
+
+  // A stale token must not hide a public repo: reads fall back to anonymous so
+  // the board still shows its tasks, and the UI reports the token separately.
+  const isRead = !options.method || options.method === 'GET';
+  if (res.status === 401 && isRead && gh.token) {
+    const anon = await fetch(url, { ...options, headers: { Accept: 'application/vnd.github+json' } });
+    if (anon.ok) {
+      tokenRejected = true;
+      return anon.status === 204 ? null : anon.json();
+    }
+  }
 
   const detail = await res.json().catch(() => ({}));
   if (res.status === 401) throw new Error('Token rejected — reconnect with a valid token.');
