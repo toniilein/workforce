@@ -50,7 +50,7 @@ const GLYPHS = {
     '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.2 5.8 10a1.7 1.7 0 0 0 2.4 2.4l5.1-5.1a3 3 0 0 0-4.2-4.2L3.9 8.3a4.3 4.3 0 0 0 6.1 6.1l4.3-4.3"/></svg>',
   // Priority: a small pennant on its pole, filled so it reads at card size.
   flag:
-    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.5V2.2"/><path d="M4 2.8h7.2l-1.5 2.6 1.5 2.6H4" fill="currentColor" stroke-linejoin="round"/></svg>',
+    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 13.4V3.4"/><path d="M4.4 4h6.9l-1.45 2.5 1.45 2.5H4.4" fill="currentColor" stroke-linejoin="round"/></svg>',
 };
 
 function glyph(name) {
@@ -345,9 +345,22 @@ const isOverdue = (iso) => {
 };
 function formatDate(iso) {
   const date = parseDay(iso);
+  const days = daysUntil(iso);
+  // The dates that matter most are the near ones, and those read better as
+  // words — you know what "Tomorrow" means without doing the arithmetic.
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  if (days === -1) return 'Yesterday';
   const opts = { day: 'numeric', month: 'short' };
   if (date.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
   return date.toLocaleDateString(undefined, opts);
+}
+
+// Whole days from today; negative once the date has passed.
+function daysUntil(iso) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((parseDay(iso) - today) / 86400000);
 }
 
 function matchesFilter(task) {
@@ -423,8 +436,13 @@ function cardNode(task) {
       meta.appendChild(restore);
     }
   }
-  if (task.due && task.status !== 'done')
-    meta.appendChild(el('span', 'due' + (isOverdue(task.due) ? ' overdue' : ''), formatDate(task.due)));
+  if (task.due && task.status !== 'done') {
+    const left = daysUntil(task.due);
+    const state = left < 0 ? ' overdue' : left <= 2 ? ' soon' : '';
+    const pill = el('span', 'due' + state, formatDate(task.due));
+    pill.title = left < 0 ? `${-left} day${left === -1 ? '' : 's'} overdue` : `Due ${task.due}`;
+    meta.appendChild(pill);
+  }
 
   const avatar = el('div', 'avatar' + (task.assignee ? '' : ' empty'));
   if (task.assignee) paintAvatar(avatar, task.assignee);
