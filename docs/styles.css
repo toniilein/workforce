@@ -432,6 +432,7 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   z-index: 40;
   padding: 18px 22px 22px;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -464,11 +465,13 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   border-bottom: 1px solid var(--line);
   background: transparent;
 }
-.d-row { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 8px; }
+.d-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 8px; }
 .d-row label { color: var(--muted); font-size: 13px; }
 .d-row select,
 .d-row input {
   height: 32px;
+  width: 100%;
+  min-width: 0; /* or the longest <option> sets the row width */
   padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1085,16 +1088,6 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
   outline: none;
 }
 .composer .primary.small { flex: 0 0 auto; }
-.head-note {
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: .5px;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.22);
-  border-radius: 999px;
-  padding: 1px 7px;
-}
-
 /* Attachments: drop target and the list of what is already attached. */
 .dropzone {
   border: 1px dashed #cfcab8;

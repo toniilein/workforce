@@ -512,11 +512,9 @@ function render() {
     const head = el('div', 'col-head');
     head.style.setProperty('--c', section.color);
     head.append(el('span', 'title', section.title));
-    if (section.humansOnly) {
-      const tag = el('span', 'head-note', 'humans');
-      tag.title = 'Agents leave this column alone';
-      head.appendChild(tag);
-    }
+    // Agents are told to leave this column alone in BOT.md; the header does not
+    // need to repeat it at everyone all day.
+    if (section.humansOnly) head.title = 'Human-only — agents leave this column alone';
     const visible = columnTasks(section.id);
     head.appendChild(el('span', 'count', String(visible.length)));
 
@@ -1445,7 +1443,8 @@ function renderDrawer() {
     parentSel.innerHTML = '<option value="">— none —</option>';
     for (const other of tasks) {
       if (other.id === task.id || !other.id || wouldCycle(task, other.id)) continue;
-      const opt = el('option', null, `${other.id} · ${other.title}`);
+      const label = other.title.length > 44 ? `${other.title.slice(0, 43)}…` : other.title;
+      const opt = el('option', null, `${other.id} · ${label}`);
       opt.value = other.id;
       parentSel.appendChild(opt);
     }
