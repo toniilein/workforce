@@ -1,7 +1,7 @@
 # Tasks
 
 One task per file. Every `.md` file in this folder (except this README) is a card on the board at
-https://toniilein.github.io/workforce/
+the lc_kanban board (or https://toniilein.github.io/workforce/docs/)
 
 ## Format
 
@@ -23,8 +23,8 @@ Everything under the `---` block is the description — the brief.
 | --- | --- |
 | `id` | `LC-###`, assigned once and never changed — the stable way to refer to a task |
 | `title` | any text. Falls back to the filename if missing. |
-| `status` | `todo`, `doing`, `blocked`, `done` — decides the column. Default `todo`. |
-| `assignee` | `toni`, `jasmin`, `mucki`, or empty for unassigned |
+| `status` | `todo`, `doing`, `blocked`, `review`, `done` — decides the column. Default `todo`. |
+| `assignee` | `toni`, `Adi`, `007` (Pookachu Bot), or empty for unassigned |
 | `due` | `YYYY-MM-DD`, or leave empty |
 | `labels` | comma-separated, or leave empty |
 
