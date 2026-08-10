@@ -350,18 +350,13 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
 .due.soon { color: #9a6b12; }
 .due.overdue { color: var(--danger); }
 
-.meta-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto; /* holds the right edge on whichever line it lands on */
-}
+
 .done-date { font-size: 12px; color: var(--muted); }
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 1; color: var(--muted); }
 .micon { display: inline-flex; }
 .micon svg { display: block; }
 
-.card-meta .avatar { margin-left: 0; }
+.card-meta .avatar { margin-left: auto; }
 .avatar {
   width: 24px;
   height: 24px;

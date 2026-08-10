@@ -380,7 +380,7 @@ function cardNode(task) {
   );
   card.dataset.file = task.file;
   card.draggable = canEdit();
-  card.title = canEdit() ? 'Click to edit · drag to move' : 'Click to open on GitHub';
+  card.title = `${task.id ? task.id + ' — ' : ''}${canEdit() ? 'click to edit · drag to move' : 'click to open on GitHub'}`;
 
   const chips = el('div', 'card-labels');
   for (const name of task.labels) {
@@ -403,7 +403,21 @@ function cardNode(task) {
     flag.title = 'Priority';
     meta.appendChild(flag);
   }
-  if (task.id) meta.appendChild(el('span', 'task-id', task.id));
+  // The date stands where the id used to. The id is still the task's name — it
+  // is on the card's tooltip, in the panel and in the filename — but on the
+  // card itself a date earns the space and LC-014 does not.
+  if (task.due && task.status !== 'done') {
+    const left = daysUntil(task.due);
+    const state = left < 0 ? ' overdue' : left <= 2 ? ' soon' : '';
+    const pill = el('span', 'label due' + state);
+    pill.append(glyph('cal'), el('span', null, formatDate(task.due)));
+    pill.title =
+      left < 0 ? `${-left} day${left === -1 ? '' : 's'} overdue`
+      : left === 0 ? 'Due today'
+      : left === 1 ? 'Due tomorrow'
+      : `Due in ${left} days`;
+    meta.appendChild(pill);
+  }
   if (task.parent) {
     const up = el('span', 'rel-chip', `↳ ${task.parent}`);
     up.title = `Part of ${byId(task.parent)?.title || task.parent}`;
@@ -446,24 +460,7 @@ function cardNode(task) {
       openAssignMenu(task, avatar);
     });
   }
-  // When and who travel together at the right of the footer, in their own group
-  // so a narrow column wraps them as a pair instead of stranding the avatar on
-  // a line of its own. The date borrows the label chip's shape.
-  const right = el('div', 'meta-right');
-  if (task.due && task.status !== 'done') {
-    const left = daysUntil(task.due);
-    const state = left < 0 ? ' overdue' : left <= 2 ? ' soon' : '';
-    const pill = el('span', 'label due' + state);
-    pill.append(glyph('cal'), el('span', null, formatDate(task.due)));
-    pill.title =
-      left < 0 ? `${-left} day${left === -1 ? '' : 's'} overdue`
-      : left === 0 ? 'Due today'
-      : left === 1 ? 'Due tomorrow'
-      : `Due in ${left} days`;
-    right.appendChild(pill);
-  }
-  right.appendChild(avatar);
-  meta.appendChild(right);
+  meta.appendChild(avatar);
   card.appendChild(meta);
 
   card.addEventListener('click', (e) => {
