@@ -48,6 +48,9 @@ const el = (tag, cls, text) => {
 const GLYPHS = {
   clip:
     '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.2 5.8 10a1.7 1.7 0 0 0 2.4 2.4l5.1-5.1a3 3 0 0 0-4.2-4.2L3.9 8.3a4.3 4.3 0 0 0 6.1 6.1l4.3-4.3"/></svg>',
+  // Priority: a small pennant on its pole, filled so it reads at card size.
+  flag:
+    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.5V2.2"/><path d="M4 2.8h7.2l-1.5 2.6 1.5 2.6H4" fill="currentColor" stroke-linejoin="round"/></svg>',
 };
 
 function glyph(name) {
@@ -66,7 +69,7 @@ function on(sel, event, handler) {
 }
 
 let tasks = [];
-let filter = { text: '', assignee: '', label: '' };
+let filter = { text: '', assignee: '', label: '', prio: false };
 let openFile = null;
 let busy = false;
 let permissionProblem = false; // connected but GitHub refused a write
@@ -148,8 +151,10 @@ const currentFingerprint = () => fingerprint(tasks.map((t) => ({ file: t.file, s
 let pollTimer = null;
 
 async function pollChanges() {
-  // Never fight a save in flight, or reload while a field is being typed into.
-  if (busy || !navigator.onLine) return;
+  // Never fight a save in flight, reload while a field is being typed into, or
+  // rebuild the board while a card is mid-drag — re-rendering replaces the node
+  // being dragged, and the browser abandons the gesture with it.
+  if (busy || dragActive || !navigator.onLine) return;
   const typing = document.activeElement;
   if (typing && /INPUT|TEXTAREA|SELECT/.test(typing.tagName) && typing.id !== 'search') return;
 
@@ -224,6 +229,10 @@ function parseTask(file, text) {
     links: (meta.links || '').split(',').map((s) => s.trim()).filter(Boolean),
     // Archived tasks stay in the repo as a record; they just leave the board.
     archived: /^(true|yes)$/i.test((meta.archived || '').trim()),
+    prio: /^(true|yes|high|1)$/i.test((meta.prio || '').trim()),
+    // Hand-placed position in its column. Absent until the card is dragged,
+    // which is what keeps an untouched column alphabetical.
+    order: Number.isFinite(parseFloat(meta.order)) ? parseFloat(meta.order) : null,
     body,
   };
 }
@@ -240,6 +249,8 @@ function toMarkdown(task) {
     ...(task.parent ? [`parent: ${task.parent}`] : []),
     ...(task.links?.length ? [`links: ${task.links.join(', ')}`] : []),
     ...(task.archived ? ['archived: true'] : []),
+    ...(task.prio ? ['prio: true'] : []),
+    ...(task.order != null ? [`order: ${task.order}`] : []),
     '---',
     '',
     task.body || '',
@@ -344,12 +355,16 @@ function matchesFilter(task) {
     if (task.assignee) return false;
   } else if (filter.assignee && task.assignee !== filter.assignee) return false;
   if (filter.label && !task.labels.includes(filter.label)) return false;
+  if (filter.prio && !task.prio) return false;
   if (filter.text && !`${task.id} ${task.title} ${task.body}`.toLowerCase().includes(filter.text)) return false;
   return true;
 }
 
 function cardNode(task) {
-  const card = el('div', `card ${task.status}${task.archived ? ' is-archived' : ''}`);
+  const card = el(
+    'div',
+    `card ${task.status}${task.archived ? ' is-archived' : ''}${task.prio ? ' is-prio' : ''}`
+  );
   card.dataset.file = task.file;
   card.draggable = canEdit();
   card.title = canEdit() ? 'Click to edit · drag to move' : 'Click to open on GitHub';
@@ -369,6 +384,14 @@ function cardNode(task) {
   card.appendChild(el('div', 'card-title', task.title));
 
   const meta = el('div', 'card-meta');
+  // An indicator, not a button. It used to clear the flag on click, which meant
+  // clicking it to check what it was is what unset it.
+  if (task.prio) {
+    const flag = el('span', 'badge prio-badge');
+    flag.appendChild(glyph('flag'));
+    flag.title = 'Priority';
+    meta.appendChild(flag);
+  }
   if (task.id) meta.appendChild(el('span', 'task-id', task.id));
   if (task.parent) {
     const up = el('span', 'rel-chip', `↳ ${task.parent}`);
@@ -426,11 +449,18 @@ function cardNode(task) {
 
   if (canEdit()) {
     card.addEventListener('dragstart', (e) => {
+      dragHeight = card.getBoundingClientRect().height;
+      dragActive = true;
       card.classList.add('dragging');
       e.dataTransfer.setData('text/plain', task.file);
       e.dataTransfer.effectAllowed = 'move';
     });
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    card.addEventListener('dragend', () => {
+      dragActive = false;
+      card.classList.remove('dragging');
+      clearInsertion();
+      document.querySelectorAll('.drop-target').forEach((n) => n.classList.remove('drop-target'));
+    });
     enableTouchDrag(card, task);
   }
   return card;
@@ -441,6 +471,7 @@ function render() {
     renderCalendar();
     renderWorkload();
     renderLabels();
+    renderPrioFilter();
     renderConnection();
     if (openFile && !$('#drawer').hidden) renderDrawer();
     return;
@@ -460,7 +491,7 @@ function render() {
       tag.title = 'Agents leave this column alone';
       head.appendChild(tag);
     }
-    const visible = tasks.filter((t) => t.status === section.id && onBoard(t) && matchesFilter(t));
+    const visible = columnTasks(section.id);
     head.appendChild(el('span', 'count', String(visible.length)));
 
     // Finished work piles up: clear it from the header, where you look at it.
@@ -503,12 +534,21 @@ function render() {
       body.addEventListener('dragover', (e) => {
         e.preventDefault();
         wrap.classList.add('drop-target');
+        markInsertion(body, dropIndex(body, e.clientY));
       });
-      body.addEventListener('dragleave', () => wrap.classList.remove('drop-target'));
+      body.addEventListener('dragleave', (e) => {
+        // dragleave also fires crossing between cards inside the column.
+        if (body.contains(e.relatedTarget)) return;
+        wrap.classList.remove('drop-target');
+        clearInsertion();
+      });
       body.addEventListener('drop', (e) => {
         e.preventDefault();
+        dragActive = false;
+        const at = dropIndex(body, e.clientY);
         wrap.classList.remove('drop-target');
-        moveTask(e.dataTransfer.getData('text/plain'), section.id);
+        clearInsertion();
+        moveTask(e.dataTransfer.getData('text/plain'), section.id, at);
       });
     }
 
@@ -518,6 +558,7 @@ function render() {
 
   renderWorkload();
   renderLabels();
+  renderPrioFilter();
   renderSectionTabs();
   renderConnection();
   if (openFile && !$('#drawer').hidden) renderDrawer();
@@ -580,6 +621,25 @@ function renderLabels() {
     });
     list.appendChild(chip);
   }
+}
+
+// Its own chip rather than a label, because priority is a property of the task
+// and labels are whatever you happen to have typed.
+function renderPrioFilter() {
+  const list = $('#prio-filter');
+  if (!list) return;
+  list.innerHTML = '';
+  const count = tasks.filter((t) => onBoard(t) && t.prio).length;
+  const chip = el('button', 'lchip prio-chip' + (filter.prio ? ' active' : ''));
+  chip.appendChild(glyph('flag'));
+  chip.appendChild(el('span', 'lname', 'Priority only'));
+  chip.appendChild(el('span', 'wcount', String(count)));
+  chip.title = count ? `${count} flagged` : 'Nothing flagged yet';
+  chip.addEventListener('click', () => {
+    filter.prio = !filter.prio;
+    render();
+  });
+  list.appendChild(chip);
 }
 
 function renderSectionTabs() {
@@ -781,17 +841,160 @@ function reportWriteFailure(err) {
   }
 }
 
-async function moveTask(file, status) {
-  const task = byFile(file);
-  if (!task || task.status === status) return;
-  const from = task.status;
-  task.status = status;
+async function setPrio(task, on) {
+  const was = task.prio;
+  task.prio = on;
   render();
   try {
-    await saveTask(task, `task: ${task.file.replace(/\.md$/, '')} → ${status}`);
+    await saveTask(task, `task: ${on ? 'prio' : 'no prio'} ${task.file.replace(/\.md$/, '')}`);
     permissionProblem = false;
   } catch (err) {
-    task.status = from; // put it back where it was
+    task.prio = was;
+    render();
+    reportWriteFailure(err);
+  }
+}
+
+/* --------------------------------------------------------- manual ordering */
+
+// Cards carry an `order`. A column nobody has reordered has none at all and
+// stays alphabetical; the first drop into it numbers the whole column once, and
+// every drop after that writes one file — one commit — by landing the card on a
+// number between its two new neighbours.
+//
+// Numbering the column up front is what makes that safe. Mixing stored numbers
+// with numbers implied from alphabetical rank looks like it should work, but the
+// two spaces collide: a card stored at 1000 next to a card whose implied rank is
+// also 1000 leaves no gap to land in.
+const ORDER_STEP = 1000;
+
+// Explicit where it exists, alphabetical rank where it does not. Only sound for
+// reading the board — see fullyOrdered() before using it to place a card.
+function effectiveOrders(list) {
+  const alpha = [...list].sort((a, b) => a.title.localeCompare(b.title));
+  const map = new Map();
+  alpha.forEach((t, i) => map.set(t.file, (i + 1) * ORDER_STEP));
+  for (const t of list) if (t.order != null) map.set(t.file, t.order);
+  return map;
+}
+
+const fullyOrdered = (list) => list.every((t) => t.order != null);
+
+function sortForColumn(list) {
+  const eff = effectiveOrders(list);
+  return [...list].sort(
+    (a, b) => eff.get(a.file) - eff.get(b.file) || a.title.localeCompare(b.title)
+  );
+}
+
+const columnTasks = (status) =>
+  sortForColumn(tasks.filter((t) => t.status === status && onBoard(t) && matchesFilter(t)));
+
+// Open a gap the size of the card being dragged, so the column shows the shape
+// of the result rather than a line marking an edge.
+let placeholder = null;
+let dragHeight = 0;
+let dragActive = false;
+
+function markInsertion(body, at) {
+  if (!placeholder) placeholder = el('div', 'card-placeholder');
+  placeholder.style.height = `${dragHeight || 64}px`;
+  const cards = [...body.querySelectorAll('.card')].filter(
+    (c) => !c.classList.contains('dragging') && !c.classList.contains('touch-source')
+  );
+  const before = at < cards.length ? cards[at] : body.querySelector('.add-card');
+  if (before) body.insertBefore(placeholder, before);
+  else body.appendChild(placeholder);
+}
+
+function clearInsertion() {
+  placeholder?.remove();
+}
+
+// Which slot the pointer is pointing at, counting gaps between cards.
+function dropIndex(body, y) {
+  const cards = [...body.querySelectorAll('.card')].filter(
+    (c) => !c.classList.contains('dragging') && !c.classList.contains('touch-source')
+  );
+  for (let i = 0; i < cards.length; i++) {
+    const box = cards[i].getBoundingClientRect();
+    if (y < box.top + box.height / 2) return i;
+  }
+  return cards.length;
+}
+
+// Number a whole column from its current on-screen order, leaving room between
+// the cards. Runs once when a column is first reordered, and again in the rare
+// case that repeated midpoints exhaust the gap. Files go up in parallel: they
+// are separate paths, so they do not contend for each other's sha.
+async function spreadColumn(status) {
+  const column = tasks
+    .filter((t) => t.status === status && onBoard(t))
+    .sort((a, b) => {
+      const eff = effectiveOrders(tasks.filter((x) => x.status === status && onBoard(x)));
+      return eff.get(a.file) - eff.get(b.file) || a.title.localeCompare(b.title);
+    });
+
+  const changed = [];
+  column.forEach((t, i) => {
+    const fresh = (i + 1) * ORDER_STEP;
+    if (t.order !== fresh) {
+      t.order = fresh;
+      changed.push(t);
+    }
+  });
+  if (!changed.length) return;
+
+  toast(`Numbering ${SECTIONS.find((s) => s.id === status)?.title || status}…`);
+  render();
+  await Promise.all(
+    changed.map((t) => saveTask(t, `task: order ${t.file.replace(/\.md$/, '')}`))
+  );
+}
+
+async function moveTask(file, status, index = null) {
+  const task = byFile(file);
+  if (!task) return;
+  if (task.status === status && index == null) return; // dropped where it began
+
+  const was = { status: task.status, order: task.order };
+  const sameColumn = task.status === status;
+
+  // Neighbours in the destination column as displayed, this card taken out.
+  const shown = columnTasks(status);
+  const currentIndex = shown.findIndex((t) => t.file === file);
+  const column = shown.filter((t) => t.file !== file);
+  const at = index == null ? column.length : Math.max(0, Math.min(index, column.length));
+  if (sameColumn && at === currentIndex) return; // dropped back into its own slot
+
+  // Landing between two cards needs both of them to have a real number.
+  if (!fullyOrdered(column)) {
+    await spreadColumn(status);
+    return moveTask(file, status, index);
+  }
+
+  const above = column[at - 1];
+  const below = column[at];
+  const lo = above ? above.order : (below ? below.order - ORDER_STEP : 0);
+  const hi = below ? below.order : (above ? above.order + ORDER_STEP : ORDER_STEP);
+
+  // Midpoints halve the gap each time; after ~20 drops into the same slot there
+  // is no room left. Spread that column out again — the only path that writes
+  // more than one file, and one you have to work at to reach.
+  if (hi - lo < 0.002) {
+    await spreadColumn(status);
+    return moveTask(file, status, index);
+  }
+
+  task.status = status;
+  task.order = Math.round(((lo + hi) / 2) * 1000) / 1000;
+  render();
+  try {
+    const name = task.file.replace(/\.md$/, '');
+    await saveTask(task, was.status === status ? `task: reorder ${name}` : `task: ${name} → ${status}`);
+    permissionProblem = false;
+  } catch (err) {
+    Object.assign(task, was); // put it back where it was
     render();
     reportWriteFailure(err);
   }
@@ -1188,6 +1391,9 @@ function renderDrawer() {
     $('#d-labels').value = task.labels.join(', ');
   }
 
+  const prio = $('#d-prio');
+  if (prio) prio.checked = !!task.prio;
+
   const assignee = $('#d-assignee');
   assignee.innerHTML = '<option value="">Unassigned</option>';
   const ids = new Set([...Object.keys(PEOPLE), ...(task.assignee ? [task.assignee] : [])]);
@@ -1339,6 +1545,8 @@ function enableTouchDrag(node, task) {
       node.classList.add('press');
       timer = setTimeout(() => {
         dragging = true;
+        dragActive = true;
+        dragHeight = node.getBoundingClientRect().height;
         node.classList.remove('press');
         node.classList.add('touch-source');
         $('#board').style.scrollSnapType = 'none';
@@ -1375,6 +1583,7 @@ function enableTouchDrag(node, task) {
 
   const finish = (e) => {
     cancel();
+    dragActive = false;
     if (!dragging) return (start = null);
     dragging = false;
     start = null;
@@ -1387,8 +1596,12 @@ function enableTouchDrag(node, task) {
     setTimeout(() => delete node.dataset.suppressClick, 300);
 
     const under = elementUnder(e.clientX, e.clientY);
-    const status = under?.closest('.sectiontab')?.dataset.status || under?.closest('.column')?.dataset.status;
-    if (status) moveTask(task.file, status);
+    const tabStatus = under?.closest('.sectiontab')?.dataset.status;
+    if (tabStatus) return moveTask(task.file, tabStatus); // tabs move, they don't place
+    const column = under?.closest('.column');
+    if (!column) return;
+    const body = column.querySelector('.col-body');
+    moveTask(task.file, column.dataset.status, body ? dropIndex(body, e.clientY) : null);
   };
 
   node.addEventListener('pointerup', finish);
@@ -1407,11 +1620,16 @@ function highlightAt(x, y) {
   const under = elementUnder(x, y);
   const tab = under?.closest('.sectiontab');
   if (tab) return tab.classList.add('tab-over');
-  under?.closest('.column')?.classList.add('touch-over');
+  const column = under?.closest('.column');
+  if (!column) return;
+  column.classList.add('touch-over');
+  const body = column.querySelector('.col-body');
+  if (body) markInsertion(body, dropIndex(body, y));
 }
 function clearHighlight() {
   document.querySelectorAll('.touch-over').forEach((n) => n.classList.remove('touch-over'));
   document.querySelectorAll('.tab-over').forEach((n) => n.classList.remove('tab-over'));
+  clearInsertion();
 }
 
 /* ------------------------------------------------------------------ wiring */
@@ -1643,6 +1861,10 @@ on('#d-assignee', 'change', (e) =>
   patchOpen({ assignee: e.target.value }, `task: assign ${openFile.replace(/\.md$/, '')}`)
 );
 on('#d-status', 'change', (e) => moveTask(openFile, e.target.value));
+on('#d-prio', 'change', (e) => {
+  const task = byFile(openFile);
+  if (task) setPrio(task, e.target.checked);
+});
 on('#d-parent', 'change', (e) => {
   const task = byFile(openFile);
   if (!task) return;

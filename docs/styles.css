@@ -1140,3 +1140,32 @@ body.sidebar-off .sidebar {
 @media (prefers-reduced-motion: reduce) {
   .sidebar, .sidebar-toggle { transition: none; }
 }
+
+/* ------------------------------------------------- priority and hand-ordering */
+
+/* Priority reads as a red edge plus a small flag, so it is legible at a glance
+   down a column and still says which card it belongs to up close. */
+.card.is-prio {
+  border-color: var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.prio-badge { color: var(--danger); }
+
+.d-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); }
+.d-check input { width: 15px; height: 15px; accent-color: var(--danger); margin: 0; }
+
+/* Where the card will land: a gap its own size, so the column shows the result
+   rather than an edge you have to interpret. */
+.card-placeholder {
+  flex: 0 0 auto;
+  border: 1px dashed #cfcaba;
+  border-radius: var(--radius);
+  background: rgba(60, 68, 51, 0.03);
+}
+
+/* The priority filter sits with the labels but marks itself as different. */
+.prio-chip { gap: 7px; }
+.prio-chip::before { content: none; }
+.prio-chip .micon { color: var(--danger); display: flex; }
+.prio-chip .lname { flex: 1; }
+.prio-chip.active { background: #fff; border-color: var(--danger); }
