@@ -1,6 +1,5 @@
 ---
-id: LC-004
-title: mytest2
+title: mytest-2-2
 status: doing
 assignee: 
 due: 
