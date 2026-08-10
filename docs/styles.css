@@ -847,3 +847,18 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
 .token-current { background: #eef1e9; border-radius: 8px; padding: 8px 10px; font-size: 12.5px; color: #55604a; }
 .token-current[hidden] { display: none; }
 .modal-actions .spacer { flex: 1; }
+
+/* The username field exists so password managers recognise a credential form;
+   it carries no information the user needs to edit. */
+#token-user {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #f5f2e8;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+#token-form { margin: 0; }

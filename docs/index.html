@@ -6,7 +6,7 @@
 <title>Board</title>
 <!-- ?v= is bumped on every change: GitHub Pages caches assets for 10 minutes,
      so without it the browser keeps running the previous app.js. -->
-<link rel="stylesheet" href="./styles.css?v=6" />
+<link rel="stylesheet" href="./styles.css?v=7" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%233c4433'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f5ec' font-family='Georgia'>B</text></svg>" />
 </head>
 <body>
@@ -99,14 +99,23 @@
       <li><strong>Repository permissions</strong> → <strong>Contents</strong> → <strong>Read and write</strong></li>
       <li>Save on GitHub, then paste the token here</li>
     </ol>
-    <input id="token-input" type="password" placeholder="github_pat_… or ghp_…" autocomplete="off" spellcheck="false" />
-    <div id="token-error" class="token-error" hidden></div>
-    <div class="modal-actions">
-      <button id="token-disconnect" class="danger small" hidden>Remove saved token</button>
-      <span class="spacer"></span>
-      <button id="token-cancel" class="ghost small">Cancel</button>
-      <button id="token-save" class="primary small">Save token</button>
-    </div>
+    <!-- A real form with a username field: password managers only offer to save
+         credentials from this shape, which is what lets the token sync to your
+         other devices instead of being retyped. -->
+    <form id="token-form" action="#" method="post">
+      <input id="token-user" name="username" type="text" autocomplete="username"
+             value="toniilein · workforce board" readonly tabindex="-1" aria-label="Account" />
+      <input id="token-input" name="password" type="password" autocomplete="current-password"
+             placeholder="github_pat_… or ghp_…" spellcheck="false" aria-label="GitHub token" />
+      <div id="token-error" class="token-error" hidden></div>
+      <div class="modal-actions">
+        <button type="button" id="token-disconnect" class="danger small" hidden>Remove saved token</button>
+        <span class="spacer"></span>
+        <button type="button" id="token-cancel" class="ghost small">Cancel</button>
+        <button type="submit" id="token-save" class="primary small">Save token</button>
+      </div>
+    </form>
+    <p class="muted small">Tip: let your browser or password manager save this. It then fills in automatically on your other devices, so you only enter it once.</p>
   </div>
 </div>
 
@@ -114,7 +123,7 @@
 
 <div id="scrim" class="scrim" hidden></div>
 
-<script src="./github.js?v=6"></script>
-<script src="./app.js?v=6"></script>
+<script src="./github.js?v=7"></script>
+<script src="./app.js?v=7"></script>
 </body>
 </html>

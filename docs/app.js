@@ -776,10 +776,12 @@ async function saveToken() {
 
 on('#btn-connect', 'click', connectGitHub);
 on('#banner-connect', 'click', connectGitHub);
-on('#token-save', 'click', saveToken);
+on('#token-form', 'submit', (e) => {
+  e.preventDefault();
+  saveToken();
+});
 on('#token-cancel', 'click', closeTokenModal);
 on('#token-disconnect', 'click', disconnectGitHub);
-on('#token-input', 'keydown', (e) => e.key === 'Enter' && saveToken());
 on('#token-modal', 'click', (e) => e.target.id === 'token-modal' && closeTokenModal());
 
 on('#drawer-close', 'click', closeDrawer);
