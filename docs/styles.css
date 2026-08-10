@@ -1096,3 +1096,43 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
 .avatar-button { cursor: pointer; }
 .avatar-button:hover { box-shadow: 0 0 0 2px rgba(60, 58, 48, .18); }
 .assign-option .avatar { width: 24px; height: 24px; font-size: 10px; flex: 0 0 24px; }
+
+/* Collapsing the sidebar: more room for columns, one click back.
+   It slides out to the left rather than vanishing, so the eye can follow
+   where it went — negative margin pulls it off while the board grows in. */
+.sidebar-toggle {
+  font-size: 16px;
+  line-height: 1;
+  margin-right: 12px;
+  flex: 0 0 auto;
+  transition: transform .28s ease;
+}
+body.sidebar-off .sidebar-toggle { transform: rotate(90deg); }
+
+.sidebar {
+  transition: margin-left .28s ease, opacity .2s ease;
+  will-change: margin-left;
+}
+body.sidebar-off .sidebar {
+  margin-left: -236px;
+  opacity: 0;
+  /* Wait for the slide to finish before taking it out of the tab order. */
+  visibility: hidden;
+  transition: margin-left .28s ease, opacity .18s ease, visibility 0s linear .28s;
+}
+.topbar { position: relative; }
+
+@media (max-width: 760px) {
+  /* On a phone the strip sits under the header, so it slides up instead. */
+  .sidebar { transition: margin-top .28s ease, opacity .2s ease; }
+  body.sidebar-off .sidebar {
+    margin-left: 0;
+    margin-top: calc(var(--side-h) * -1);
+    transition: margin-top .28s ease, opacity .18s ease, visibility 0s linear .28s;
+  }
+  .sidebar-toggle { margin-right: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar, .sidebar-toggle { transition: none; }
+}

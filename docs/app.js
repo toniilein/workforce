@@ -768,6 +768,8 @@ const childrenOf = (id) => (id ? tasks.filter((t) => t.parent === id) : []);
 // Archived work is hidden by default but never removed from the repo.
 let showArchived = false;
 let view = 'board';                 // 'board' | 'calendar'
+// Remembered per browser: a collapsed sidebar should stay collapsed.
+let sidebarHidden = localStorage.getItem('board.sidebar') === 'hidden';
 let calMonth = null;                // first day of the month on screen
 const onBoard = (t) => showArchived || !t.archived;
 
@@ -1432,6 +1434,18 @@ on('#search', 'input', (e) => {
   render();
 });
 on('#btn-refresh', 'click', () => start());
+function applySidebar() {
+  document.body.classList.toggle('sidebar-off', sidebarHidden);
+  const btn = $('#btn-sidebar');
+  if (btn) btn.title = sidebarHidden ? 'Show the sidebar' : 'Hide the sidebar';
+}
+on('#btn-sidebar', 'click', () => {
+  sidebarHidden = !sidebarHidden;
+  localStorage.setItem('board.sidebar', sidebarHidden ? 'hidden' : 'shown');
+  applySidebar();
+});
+applySidebar();
+
 on('#view-board', 'click', () => setView('board'));
 on('#view-calendar', 'click', () => setView('calendar'));
 on('#cal-prev', 'click', () => {
