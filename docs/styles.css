@@ -335,17 +335,20 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
 }
 /* The date wears the label chip's shape with a calendar in front of it, so it
    reads as a date at a glance instead of as another label. */
+/* No fill — just the calendar and the date. Urgency shows in the ink instead,
+   which keeps a card with labels on it from reading as three competing chips. */
 .due {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   white-space: nowrap;
-  background: #ecebf3;
-  color: #6c6b81;
+  padding: 0;
+  background: none;
+  color: #83816f;
 }
-.due .micon { opacity: 0.75; }
-.due.soon { background: #fbedd4; color: #8a6112; }
-.due.overdue { background: #f8e6e3; color: var(--danger); }
+.due .micon { opacity: 0.8; }
+.due.soon { color: #9a6b12; }
+.due.overdue { color: var(--danger); }
 
 .meta-right {
   display: flex;
