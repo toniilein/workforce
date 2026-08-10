@@ -213,6 +213,36 @@ Two things that trip agents up:
 - `content` is the **entire file**, base64 encoded — not a patch, not plain text.
 - `sha` is required when updating and must be the current one. Omit it only when creating.
 
+### The mistake that actually happens
+
+Writing the whole file means **replacing** it — one `---` block at the top, then the body.
+The common failure is emitting a fresh header above the content that is already there:
+
+```markdown
+---
+id: LC-028
+title: LC-028          ← a new block, with fields you did not carry over
+status: backlog
+---
+
+---                    ← the real header, now buried in the body
+id: LC-028
+title: London Trip 11-13 Aug
+status: focus
+assignee: 007
+---
+```
+
+The board reads the **first** block, so the card silently loses its title, status and
+assignee. It has happened on this board. Before you write:
+
+1. Parse the file you just read into fields + body.
+2. Change only the fields you mean to change; **carry every other field through unchanged**.
+3. Emit exactly one `---` block, then the body.
+4. Check your output contains `---` exactly twice before sending it.
+
+A card showing ⚠ on the board is this: two frontmatter blocks in one file.
+
 ## Working alongside humans and other agents
 
 Everyone writes the same files at the same time, so:

@@ -239,6 +239,9 @@ function parseTask(file, text) {
     // Archived tasks stay in the repo as a record; they just leave the board.
     archived: /^(true|yes)$/i.test((meta.archived || '').trim()),
     prio: /^(true|yes|high|1)$/i.test((meta.prio || '').trim()),
+    // A second --- block still sitting in the body means someone prepended a
+    // new header rather than rewriting the file: the fields below are stale.
+    malformed: /^---\r?\n[\s\S]*?\r?\n---/.test(body),
     // Hand-placed position in its column. Absent until the card is dragged,
     // which is what keeps an untouched column alphabetical.
     order: Number.isFinite(parseFloat(meta.order)) ? parseFloat(meta.order) : null,
@@ -424,6 +427,11 @@ function cardNode(task) {
   const meta = el('div', 'card-meta');
   // An indicator, not a button. It used to clear the flag on click, which meant
   // clicking it to check what it was is what unset it.
+  if (task.malformed) {
+    const warn = el('span', 'badge malformed-badge', '⚠');
+    warn.title = 'This file has two frontmatter blocks — an agent probably wrote a new header above the old one. Open it and merge them.';
+    meta.appendChild(warn);
+  }
   if (task.prio) {
     const flag = el('span', 'badge prio-badge');
     flag.appendChild(glyph('flag'));

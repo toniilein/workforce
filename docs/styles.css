@@ -1079,6 +1079,9 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
 /* Reach across the cell padding and the grid gap so a run reads as one bar
    rather than three chips that happen to match. --reach is that distance. */
 .cal-grid { --reach: 12px; }
+/* width:100% pins the chip to the cell's content box, so a negative margin has
+   nothing to stretch. Let flex stretch it instead and the margins widen it. */
+.cal-task[class*="span-"] { width: auto; max-width: none; align-self: stretch; }
 .cal-task.span-start, .cal-task.span-mid { margin-right: calc(var(--reach) * -1); }
 .cal-task.span-mid, .cal-task.span-end { margin-left: calc(var(--reach) * -1); }
 .cal-task.span-start { border-radius: 6px 0 0 6px; }
@@ -1240,3 +1243,6 @@ body.sidebar-off .sidebar {
 #d-events .task-id { flex: 0 0 auto; }
 #d-events li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 #d-events li .icon-btn { margin-left: auto; }
+
+/* A task file with two frontmatter blocks: the card is showing stale fields. */
+.malformed-badge { color: #b4544a; font-size: 13px; cursor: help; }
