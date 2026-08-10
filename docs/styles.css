@@ -328,21 +328,37 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
 .card-meta {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 7px 10px;
   margin-top: 9px;
   min-height: 24px;
 }
-/* The date is a chip like the labels beside it — same size and shape, only the
-   tint carries the meaning. */
-.due { white-space: nowrap; }
+/* The date wears the label chip's shape with a calendar in front of it, so it
+   reads as a date at a glance instead of as another label. */
+.due {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  background: #ecebf3;
+  color: #6c6b81;
+}
+.due .micon { opacity: 0.75; }
 .due.soon { background: #fbedd4; color: #8a6112; }
 .due.overdue { background: #f8e6e3; color: var(--danger); }
+
+.meta-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto; /* holds the right edge on whichever line it lands on */
+}
 .done-date { font-size: 12px; color: var(--muted); }
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 1; color: var(--muted); }
 .micon { display: inline-flex; }
 .micon svg { display: block; }
 
-.card-meta .avatar { margin-left: auto; }
+.card-meta .avatar { margin-left: 0; }
 .avatar {
   width: 24px;
   height: 24px;
@@ -905,6 +921,7 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
   font-size: 10.5px;
   color: #a09d90;
   letter-spacing: .3px;
+  white-space: nowrap; /* LC-003 is one word, never LC- above 003 */
 }
 
 /* Relationships and archive state */

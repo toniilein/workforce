@@ -48,6 +48,8 @@ const el = (tag, cls, text) => {
 const GLYPHS = {
   clip:
     '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.2 5.8 10a1.7 1.7 0 0 0 2.4 2.4l5.1-5.1a3 3 0 0 0-4.2-4.2L3.9 8.3a4.3 4.3 0 0 0 6.1 6.1l4.3-4.3"/></svg>',
+  cal:
+    '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="3.4" width="11.2" height="10.2" rx="2.2"/><path d="M2.4 6.7h11.2"/><path d="M5.7 2.1v2.3"/><path d="M10.3 2.1v2.3"/></svg>',
   // Priority: a small pennant on its pole, filled so it reads at card size.
   flag:
     '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 13.4V3.4"/><path d="M4.4 4h6.9l-1.45 2.5 1.45 2.5H4.4" fill="currentColor" stroke-linejoin="round"/></svg>',
@@ -343,17 +345,13 @@ const isOverdue = (iso) => {
   const t = new Date();
   return parseDay(iso) < new Date(t.getFullYear(), t.getMonth(), t.getDate());
 };
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// Written out rather than localised, so the same card reads the same way to
+// everyone on the board regardless of whose browser is showing it.
 function formatDate(iso) {
   const date = parseDay(iso);
-  const days = daysUntil(iso);
-  // The dates that matter most are the near ones, and those read better as
-  // words — you know what "Tomorrow" means without doing the arithmetic.
-  if (days === 0) return 'Today';
-  if (days === 1) return 'Tomorrow';
-  if (days === -1) return 'Yesterday';
-  const opts = { day: 'numeric', month: 'short' };
-  if (date.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
-  return date.toLocaleDateString(undefined, opts);
+  return `${date.getDate()}. ${MONTHS[date.getMonth()]}. ${date.getFullYear()}`;
 }
 
 // Whole days from today; negative once the date has passed.
@@ -382,9 +380,6 @@ function cardNode(task) {
   card.draggable = canEdit();
   card.title = canEdit() ? 'Click to edit · drag to move' : 'Click to open on GitHub';
 
-  // Labels and the due date share the chip row above the title. The date is the
-  // same shape as a label because it is the same kind of thing — a small fact
-  // about the task you scan for, rather than a footnote under it.
   const chips = el('div', 'card-labels');
   for (const name of task.labels) {
     const tint = labelTint(name);
@@ -392,13 +387,6 @@ function cardNode(task) {
     chip.style.setProperty('--lbg', tint.bg);
     chip.style.setProperty('--lfg', tint.fg);
     chips.appendChild(chip);
-  }
-  if (task.due && task.status !== 'done') {
-    const left = daysUntil(task.due);
-    const state = left < 0 ? ' overdue' : left <= 2 ? ' soon' : '';
-    const pill = el('span', 'label due' + state, formatDate(task.due));
-    pill.title = left < 0 ? `${-left} day${left === -1 ? '' : 's'} overdue` : `Due ${task.due}`;
-    chips.appendChild(pill);
   }
   if (chips.children.length) card.appendChild(chips);
 
@@ -456,7 +444,24 @@ function cardNode(task) {
       openAssignMenu(task, avatar);
     });
   }
-  meta.appendChild(avatar);
+  // When and who travel together at the right of the footer, in their own group
+  // so a narrow column wraps them as a pair instead of stranding the avatar on
+  // a line of its own. The date borrows the label chip's shape.
+  const right = el('div', 'meta-right');
+  if (task.due && task.status !== 'done') {
+    const left = daysUntil(task.due);
+    const state = left < 0 ? ' overdue' : left <= 2 ? ' soon' : '';
+    const pill = el('span', 'label due' + state);
+    pill.append(glyph('cal'), el('span', null, formatDate(task.due)));
+    pill.title =
+      left < 0 ? `${-left} day${left === -1 ? '' : 's'} overdue`
+      : left === 0 ? 'Due today'
+      : left === 1 ? 'Due tomorrow'
+      : `Due in ${left} days`;
+    right.appendChild(pill);
+  }
+  right.appendChild(avatar);
+  meta.appendChild(right);
   card.appendChild(meta);
 
   card.addEventListener('click', (e) => {
