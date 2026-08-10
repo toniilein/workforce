@@ -280,7 +280,6 @@ async function saveTask(task, message) {
 function setBusy(on) {
   busy = on;
   document.body.classList.toggle('busy', on);
-  $('#page-meta').textContent = on ? 'Saving to GitHub…' : metaLine();
 }
 
 /* ---------------------------------------------------------------- rendering */
@@ -444,7 +443,6 @@ function render() {
     renderLabels();
     renderConnection();
     if (openFile && !$('#drawer').hidden) renderDrawer();
-    if (!busy) $('#page-meta').textContent = metaLine();
     return;
   }
   const board = $('#board');
@@ -523,17 +521,6 @@ function render() {
   renderSectionTabs();
   renderConnection();
   if (openFile && !$('#drawer').hidden) renderDrawer();
-  if (!busy) $('#page-meta').textContent = metaLine();
-}
-
-function metaLine() {
-  const open = tasks.filter((t) => t.status !== 'done' && onBoard(t)).length;
-  const mode = gateway.active
-    ? (gateway.canWrite ? 'server-connected' : 'read-only (server has no token)')
-    : gh.connected
-      ? 'connected'
-      : 'read-only';
-  return `${open} open task${open === 1 ? '' : 's'} · ${tasks.length} files · ${mode}`;
 }
 
 function renderWorkload() {
@@ -1733,12 +1720,11 @@ on('#d-delete', 'click', () => requestDelete(openFile));
 async function start() {
   try {
     if (!gateway.active) await detectGateway();
-    $('#page-meta').textContent = 'Loading from GitHub…';
+    $('#board').replaceChildren(el('div', 'muted', 'Loading from GitHub…'));
     tasks = await loadTasks();
     render();
     startPolling();
   } catch (err) {
-    $('#page-meta').textContent = err.message;
     $('#board').innerHTML = '';
     $('#board').appendChild(el('div', 'muted', err.message));
     renderConnection();
