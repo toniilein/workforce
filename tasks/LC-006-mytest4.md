@@ -2,7 +2,7 @@
 id: LC-006
 title: mytest4
 status: doing
-assignee: 
+assignee: 007
 due: 
 labels: 
 ---
