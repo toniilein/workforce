@@ -143,6 +143,74 @@ const removeTask = (file, message, sha) =>
     body: JSON.stringify({ message, sha, branch: REPO.branch }),
   });
 
+
+/* ------------------------------------------------------- agent guard rails */
+
+// Agents identify themselves with X-Agent-Id. The board's own UI does not send
+// it, so humans are unaffected. This is a guard rail, not a security boundary:
+// an agent that omits the header is treated as a human. It exists because the
+// damage here is accidental — an agent rewriting a file it should not have
+// touched, or dropping a title it failed to carry through — and that is exactly
+// what a check at the write path catches.
+function frontmatter(text) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text || '').trim());
+  const out = {};
+  if (!m) return out;
+  for (const line of m[1].split(/\r?\n/)) {
+    const at = line.indexOf(':');
+    if (at > 0) out[line.slice(0, at).trim().toLowerCase()] = line.slice(at + 1).trim();
+  }
+  return out;
+}
+
+async function readTaskText(file) {
+  if (LOCAL_MODE) {
+    const full = path.join(LOCAL_DIR, file);
+    return fs.existsSync(full) ? fs.readFileSync(full, 'utf8') : null;
+  }
+  try {
+    const entry = await github(`${contentsUrl(file)}?ref=${REPO.branch}`);
+    return Buffer.from(entry.content || '', 'base64').toString('utf8');
+  } catch (err) {
+    if (err.status === 404) return null;
+    throw err;
+  }
+}
+
+// Returns an error message when an agent may not make this write, else null.
+async function agentRefusal(agentId, file, method, nextText) {
+  const current = await readTaskText(file);
+
+  if (method === 'DELETE') {
+    return current
+      ? 'Agents do not delete tasks. Set `archived: true` instead and say why in ## Notes.'
+      : null;
+  }
+
+  const next = frontmatter(nextText);
+
+  if (!current) {
+    // Creating is allowed, but it has to be the agent's own work to pick up.
+    if (next.assignee && next.assignee !== agentId)
+      return `A new task must be assigned to you (${agentId}) or left unassigned.`;
+    if (next.status === 'admin') return 'The admin column is human-only.';
+    return null;
+  }
+
+  const before = frontmatter(current);
+
+  if ((before.assignee || '') !== agentId)
+    return `${file} is assigned to ${before.assignee || 'nobody'}, not to you (${agentId}). Agents only work their own tasks.`;
+  if (before.status === 'admin' || next.status === 'admin')
+    return 'The admin column is human-only.';
+  if ((before.title || '') !== (next.title || ''))
+    return `Agents do not rename tasks. Leave title as "${before.title}" and carry it through unchanged.`;
+  if ((before.id || '') !== (next.id || ''))
+    return 'The id is permanent. Carry it through unchanged.';
+
+  return null;
+}
+
 /* -------------------------------------------------------------------- http */
 
 function send(res, status, body) {
@@ -394,6 +462,16 @@ async function handle(req, res) {
     }
     // Keep writes inside tasks/: no traversal, no stray file types.
     if (!/^[\w.-]+\.md$/.test(file)) return send(res, 400, { error: 'invalid task file name' });
+
+    const agentId = String(req.headers['x-agent-id'] || '').trim();
+    if (agentId) {
+      try {
+        const refusal = await agentRefusal(agentId, file, req.method, String(body.text ?? ''));
+        if (refusal) return send(res, 403, { error: refusal });
+      } catch (err) {
+        return send(res, err.status || 502, { error: err.message });
+      }
+    }
 
     try {
       const result =

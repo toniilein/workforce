@@ -23,6 +23,11 @@ There are two ways in. Pick one:
 GitHub credentials at all. Base URL is wherever the board is running (the Replit URL). If the
 board has a `BOARD_PASSWORD` set, send it as an `X-Board-Password` header.
 
+**Send `X-Agent-Id: 007` on every write.** It is how the board knows an agent is writing, and
+it turns on the checks below — which exist to catch your mistakes before they reach a human's
+board, not to get in your way. Omitting it is not a shortcut; it is writing under a human's
+name, which is worse than being refused.
+
 **B. GitHub directly** — for agents that run nowhere near the board.
 `Authorization: Bearer <YOUR_GITHUB_TOKEN>` on every request, with *Contents: Read and write*
 on this repo only. Keep the token in the agent's own secret storage; never print it in a chat
@@ -243,6 +248,25 @@ assignee. It has happened on this board. Before you write:
 
 A card showing ⚠ on the board is this: two frontmatter blocks in one file.
 
+## What the board will refuse
+
+With `X-Agent-Id` set, the gateway rejects these with **403** and a message saying why:
+
+| You tried to | Why it is refused |
+| --- | --- |
+| write a task assigned to someone else | agents work only their own tasks |
+| change a task's `title` | the title is the human's words. Carry it through unchanged. |
+| change a task's `id` | it is permanent and things point at it |
+| write anything in the `admin` column | human-only |
+| `DELETE` a task | use `archived: true` and say why in `## Notes` |
+| create a task assigned to someone else | leave it unassigned and let a human route it |
+
+A 403 is not a transient error. Do not retry it — read the message, fix what you were doing, and
+if it still refuses, write the problem into `## Notes` on your own task and stop.
+
+You may freely change your own task's `status`, `due`, `start`, `events`, `labels`, `archived`,
+and the body below the frontmatter. That is the whole job.
+
 ## Working alongside humans and other agents
 
 Everyone writes the same files at the same time, so:
@@ -251,7 +275,9 @@ Everyone writes the same files at the same time, so:
 - **On `409`, do not retry blindly** — re-read the file, reapply your change to the *new*
   content, then write. Blindly retrying is how a task loses someone's edit.
 - **One task per agent.** Claim by setting `status` before working; that is the lock.
-- **Never touch a task assigned to someone else**, and never touch the `admin` column.
+- **Never touch a task assigned to someone else**, and never touch the `admin` column. The
+  gateway enforces both, but do not rely on being caught — an agent writing straight to GitHub
+  is not checked at all.
 - Humans drag cards while you work. Do not be surprised if `status` or `order` changed under
   you — take the new value, keep your own field edits.
 
@@ -263,11 +289,13 @@ Everyone writes the same files at the same time, so:
 | 403 | token lacks *Contents: Read and write* | ask the human to fix the token permission |
 | 409 | the file changed since you read it | re-read, reapply, retry |
 | 422 | usually a missing or wrong `sha` | re-read the file and use its current sha |
+| 403 | *with a message* — you broke one of the rules above | read it, fix it, do not retry |
 | 503 | the gateway has no token — board is read-only | ask the human to set `GITHUB_TOKEN` |
 
 ## Good manners
 
 - Never touch a task that is not assigned to you.
+- Never rename a task. The title is how a human recognises their own work.
 - Never delete a task a human created; archive it and say why in the notes.
 - Keep the frontmatter valid — a broken `---` block breaks the card.
 - Say what you did in the notes, not just that you did it.
