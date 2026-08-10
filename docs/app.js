@@ -712,6 +712,28 @@ on('#btn-new', 'click', () => createTask('todo'));
 const repoLink = $('#repo-link');
 if (repoLink) repoLink.href = `https://github.com/${REPO.owner}/${REPO.name}/tree/${REPO.branch}/${REPO.dir}`;
 
+// Shows what is actually stored, so the token has a visible home rather than
+// being an invisible thing you re-enter and hope about.
+function renderTokenStatus() {
+  const box = $('#token-status');
+  if (!box) return;
+  box.hidden = !gh.connected;
+  if (!gh.connected) return;
+
+  box.classList.toggle('bad', permissionProblem);
+  const state = $('#token-state');
+  const value = $('#token-value');
+  const saved = $('#token-saved');
+  if (state) state.textContent = permissionProblem ? 'Saved, but it cannot write' : 'Saved and working';
+  if (value) value.textContent = gh.masked;
+  if (saved) {
+    const when = gh.savedAt ? new Date(gh.savedAt) : null;
+    saved.textContent = when
+      ? `Stored in this browser since ${when.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
+      : 'Stored in this browser';
+  }
+}
+
 function openTokenModal() {
   const input = $('#token-input');
   const modal = $('#token-modal');
@@ -719,14 +741,52 @@ function openTokenModal() {
   input.value = '';
   const err = $('#token-error');
   if (err) err.hidden = true;
+
+  renderTokenStatus();
   // Replacing a saved token has to be possible without disconnecting first —
   // otherwise a broken token locks you out of entering a working one.
-  const current = $('#token-current');
-  if (current) current.hidden = !gh.connected;
   const remove = $('#token-disconnect');
   if (remove) remove.hidden = !gh.connected;
+  const howto = $('#token-howto');
+  if (howto) howto.open = !gh.connected; // steps expanded only when there's nothing saved
+  const save = $('#token-save');
+  if (save) save.textContent = gh.connected ? 'Replace token' : 'Save token';
+
   modal.hidden = false;
-  input.focus();
+  if (!gh.connected) input.focus();
+}
+
+// Proves the stored token still works, from the panel, without touching a card.
+async function testToken() {
+  const btn = $('#token-test');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Testing…';
+  }
+  try {
+    await checkAccess(REPO);
+    // A read succeeding says nothing about writing, so try a real (harmless)
+    // write: rewrite one task file with its own current content.
+    const probe = tasks[0];
+    if (probe) {
+      await putFile(REPO, `${REPO.dir}/${probe.file}`, toMarkdown(probe), 'task: verify write access', probe.sha)
+        .then((res) => {
+          probe.sha = res.content.sha;
+        });
+    }
+    permissionProblem = false;
+    toast('Token works — reading and writing.');
+  } catch (err) {
+    if (/permission|read but not write/i.test(err.message)) permissionProblem = true;
+    toast(err.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Test it';
+    }
+    renderTokenStatus();
+    renderConnection();
+  }
 }
 
 function closeTokenModal() {
@@ -794,6 +854,7 @@ async function saveToken() {
     permissionProblem = false;
     await keepStorage();
     await offerToRemember(token);
+    renderTokenStatus();
     closeTokenModal();
     await start();
     toast('Connected — drag a card to test it saves.');
@@ -814,6 +875,7 @@ on('#token-form', 'submit', (e) => {
 });
 on('#token-cancel', 'click', closeTokenModal);
 on('#token-disconnect', 'click', disconnectGitHub);
+on('#token-test', 'click', testToken);
 on('#token-modal', 'click', (e) => e.target.id === 'token-modal' && closeTokenModal());
 
 on('#drawer-close', 'click', closeDrawer);

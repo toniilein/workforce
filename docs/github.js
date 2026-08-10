@@ -9,17 +9,32 @@
  */
 
 const TOKEN_KEY = 'board.gh.token';
+const SAVED_KEY = 'board.gh.savedAt';
 
 const gh = {
   get token() {
     return localStorage.getItem(TOKEN_KEY) || '';
   },
   set token(v) {
-    if (v) localStorage.setItem(TOKEN_KEY, v);
-    else localStorage.removeItem(TOKEN_KEY);
+    if (v) {
+      localStorage.setItem(TOKEN_KEY, v);
+      localStorage.setItem(SAVED_KEY, new Date().toISOString());
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(SAVED_KEY);
+    }
   },
   get connected() {
     return Boolean(this.token);
+  },
+  get savedAt() {
+    return localStorage.getItem(SAVED_KEY) || '';
+  },
+  // Never render the whole secret — enough to recognise which token this is.
+  get masked() {
+    const t = this.token;
+    if (!t) return '';
+    return t.length <= 12 ? '••••' : `${t.slice(0, 11)}…${t.slice(-4)}`;
   },
 };
 

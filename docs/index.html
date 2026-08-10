@@ -6,7 +6,7 @@
 <title>Board</title>
 <!-- ?v= is bumped on every change: GitHub Pages caches assets for 10 minutes,
      so without it the browser keeps running the previous app.js. -->
-<link rel="stylesheet" href="./styles.css?v=9" />
+<link rel="stylesheet" href="./styles.css?v=10" />
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%233c4433'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='%23f7f5ec' font-family='Georgia'>B</text></svg>" />
 </head>
 <body>
@@ -90,15 +90,28 @@
 <!-- token dialog — replaces the browser's prompt() so it can explain itself -->
 <div id="token-modal" class="modal" hidden>
   <div class="modal-card">
-    <h2>Connect GitHub</h2>
-    <p class="muted small">The board saves changes by committing to your repo, which needs a token. It is stored only in this browser and sent only to github.com.</p>
-    <p id="token-current" class="token-current" hidden>A token is already saved here. Paste a new one below to replace it.</p>
-    <ol class="steps">
-      <li>Open <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">your tokens</a> (or <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">make a new one</a>)</li>
-      <li><strong>Repository access</strong> → Only select repositories → <strong>workforce</strong></li>
-      <li><strong>Repository permissions</strong> → <strong>Contents</strong> → <strong>Read and write</strong></li>
-      <li>Save on GitHub, then paste the token here</li>
-    </ol>
+    <h2>GitHub access</h2>
+    <p class="muted small">The board saves changes by committing to your repo, which needs a token. It is kept in this browser only and sent only to github.com.</p>
+    <div id="token-status" class="token-status" hidden>
+      <div class="token-status-row">
+        <span class="token-dot"></span>
+        <div>
+          <div id="token-state" class="token-state"></div>
+          <div id="token-value" class="token-value"></div>
+          <div id="token-saved" class="muted small"></div>
+        </div>
+      </div>
+      <button type="button" id="token-test" class="ghost small">Test it</button>
+    </div>
+    <details id="token-howto">
+      <summary>How to create the token</summary>
+      <ol class="steps">
+        <li>Open <a href="https://github.com/settings/personal-access-tokens" target="_blank" rel="noopener">your tokens</a> (or <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">make a new one</a>)</li>
+        <li><strong>Repository access</strong> → Only select repositories → <strong>workforce</strong></li>
+        <li><strong>Repository permissions</strong> → <strong>Contents</strong> → <strong>Read and write</strong></li>
+        <li><strong>Expiration</strong> → <em>No expiration</em> if you never want to redo this</li>
+      </ol>
+    </details>
     <!-- A real form with a username field: password managers only offer to save
          credentials from this shape, which is what lets the token sync to your
          other devices instead of being retyped. -->
@@ -123,7 +136,7 @@
 
 <div id="scrim" class="scrim" hidden></div>
 
-<script src="./github.js?v=9"></script>
-<script src="./app.js?v=9"></script>
+<script src="./github.js?v=10"></script>
+<script src="./app.js?v=10"></script>
 </body>
 </html>

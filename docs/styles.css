@@ -862,3 +862,25 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
   font-size: 12.5px;
 }
 #token-form { margin: 0; }
+
+/* Stored-token panel: what is saved, and whether it still works. */
+.token-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #eef1e9;
+  border: 1px solid #dde3d5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 12px 0;
+}
+.token-status[hidden] { display: none; }
+.token-status.bad { background: #f6dfd9; border-color: #e3c3bb; }
+.token-status-row { display: flex; align-items: center; gap: 10px; }
+.token-dot { width: 9px; height: 9px; border-radius: 50%; background: #5d9b57; flex: 0 0 auto; }
+.token-status.bad .token-dot { background: var(--danger); }
+.token-state { font-weight: 600; font-size: 13px; }
+.token-value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: #55534a; }
+#token-howto summary { cursor: pointer; font-size: 12.5px; color: var(--muted); margin: 10px 0 4px; }
+#token-howto .steps { margin-top: 6px; }
