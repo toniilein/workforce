@@ -533,17 +533,20 @@ async function createTask(status, title) {
     render();
     return;
   }
-  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'task';
-  let file = `${slug}.md`;
+  // Filenames lead with the id, so the folder sorts in creation order and a
+  // file can be matched to a card at a glance: LC-004-book-flights.md
+  const id = nextTaskId();
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 44) || 'task';
+  let file = `${id}-${slug}.md`;
   let n = 2;
-  while (byFile(file)) file = `${slug}-${n++}.md`;
+  while (byFile(file)) file = `${id}-${slug}-${n++}.md`;
 
-  const task = { file, id: nextTaskId(), title, status, assignee: '', due: '', labels: [], body: '', sha: null };
+  const task = { file, id, title, status, assignee: '', due: '', labels: [], body: '', sha: null };
   tasks.push(task); // optimistic, so the card appears immediately
   render();
   setBusy(true);
   try {
-    const res = await putFile(REPO, `${REPO.dir}/${file}`, toMarkdown(task), `task: add ${slug}`);
+    const res = await putFile(REPO, `${REPO.dir}/${file}`, toMarkdown(task), `task: add ${id}`);
     task.sha = res.content.sha;
     permissionProblem = false;
     toast('Task created');

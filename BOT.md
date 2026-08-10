@@ -39,6 +39,7 @@ Findings get appended here.
 
 `status` must be one of: `todo`, `doing`, `blocked`, `review`, `done`.
 `id` is the task's permanent name (`LC-007`): quote it when you report, and never change it.
+Filenames follow it too — `LC-007-something.md` — so new files you create should use that shape.
 Only change the fields you mean to change — keep the rest of the file intact.
 
 ## The loop

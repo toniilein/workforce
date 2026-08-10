@@ -28,7 +28,9 @@ Everything under the `---` block is the description — the brief.
 | `due` | `YYYY-MM-DD`, or leave empty |
 | `labels` | comma-separated, or leave empty |
 
-The filename is free-form; `renew-passport.md` is nicer than `task-1.md` but nothing depends on it.
+Filenames lead with the id: `LC-004-renew-passport.md`. That keeps the folder sorted in creation
+order and makes a file obvious at a glance. The id inside the file is what actually identifies the
+task, so a mismatched filename still works — but keep them in step.
 
 ## For agents
 
