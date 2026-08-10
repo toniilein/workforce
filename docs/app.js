@@ -49,10 +49,10 @@ const GLYPHS = {
   clip:
     '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.2 5.8 10a1.7 1.7 0 0 0 2.4 2.4l5.1-5.1a3 3 0 0 0-4.2-4.2L3.9 8.3a4.3 4.3 0 0 0 6.1 6.1l4.3-4.3"/></svg>',
   cal:
-    '<svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.4" y="3.4" width="11.2" height="10.2" rx="2.2"/><path d="M2.4 6.7h11.2"/><path d="M5.7 2.1v2.3"/><path d="M10.3 2.1v2.3"/></svg>',
+    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.6" y="4.2" width="10.8" height="8.8" rx="2"/><path d="M2.6 7.2h10.8"/><path d="M5.6 3v2.4"/><path d="M10.4 3v2.4"/></svg>',
   // Priority: a small pennant on its pole, filled so it reads at card size.
   flag:
-    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 13.4V3.4"/><path d="M4.4 4h6.9l-1.45 2.5 1.45 2.5H4.4" fill="currentColor" stroke-linejoin="round"/></svg>',
+    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.4 13V3"/><path d="M4.4 3.6h6.9l-1.45 2.4 1.45 2.4H4.4" fill="currentColor" stroke-linejoin="round"/></svg>',
 };
 
 function glyph(name) {

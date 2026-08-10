@@ -302,7 +302,7 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  padding: 13px 14px 12px;
+  padding: 12px 14px 10px;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(60, 58, 48, 0.05);
   transition: box-shadow 0.12s ease, transform 0.12s ease;
@@ -330,7 +330,7 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   align-items: center;
   flex-wrap: wrap;
   gap: 7px 10px;
-  margin-top: 9px;
+  margin-top: 6px;
   min-height: 24px;
 }
 /* The date wears the label chip's shape with a calendar in front of it, so it
@@ -369,7 +369,15 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   background: #9a988c;
   flex: 0 0 24px;
 }
-.avatar.empty { background: transparent; border: 1px dashed #c4c0b0; }
+.avatar.empty {
+  background: transparent;
+  border: 1px dashed #c4c0b0;
+  color: #b0ac9c;
+  font-size: 12px;
+}
+.avatar.empty::before { content: '?'; }
+.wavatar.empty::before { content: '?'; color: #b0ac9c; font-size: 11px; font-weight: 700; }
+.wavatar.empty { display: grid; place-items: center; }
 
 .add-card {
   width: 100%;
@@ -1160,8 +1168,9 @@ body.sidebar-off .sidebar {
   border-color: var(--danger);
   box-shadow: inset 3px 0 0 var(--danger);
 }
-.prio-badge { color: var(--danger); align-self: center; }
-.prio-badge .micon { align-items: center; height: 12px; }
+.prio-badge { color: var(--danger); }
+.card-meta > * { line-height: 1; }
+.micon { align-items: center; height: 12px; }
 
 .d-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); }
 .d-check input { width: 15px; height: 15px; accent-color: var(--danger); margin: 0; }
