@@ -747,6 +747,23 @@ function disconnectGitHub() {
   toast('Token removed — the board is read-only again.');
 }
 
+// Ask the browser's password manager to remember the token, so other devices
+// that sync with it fill it in instead of you retyping. Chromium implements
+// this explicitly; elsewhere the form markup lets the manager offer it itself.
+async function offerToRemember(token) {
+  try {
+    if (!window.PasswordCredential || !navigator.credentials?.store) return;
+    const credential = new window.PasswordCredential({
+      id: `${REPO.owner}/${REPO.name}`,
+      password: token,
+      name: 'Board — GitHub token',
+    });
+    await navigator.credentials.store(credential);
+  } catch {
+    /* the manager declined or is unavailable — the form fallback still applies */
+  }
+}
+
 async function saveToken() {
   const input = $('#token-input');
   const err = $('#token-error');
@@ -762,6 +779,7 @@ async function saveToken() {
     // The repo endpoint reports OUR access, not the token's, so it cannot prove
     // the token may write. The first real save is the honest test.
     permissionProblem = false;
+    await offerToRemember(token);
     closeTokenModal();
     await start();
     toast('Connected — drag a card to test it saves.');
