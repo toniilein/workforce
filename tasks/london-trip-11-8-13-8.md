@@ -16,3 +16,5 @@ Blocked — no brief provided. What do you need for this London trip (11-13 Aug)
 - Itinerary planning?
 - Meeting prep?
 - Something else?
+
+dunno
