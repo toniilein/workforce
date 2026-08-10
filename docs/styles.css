@@ -14,7 +14,8 @@
   --primary: #4a7c44;     /* the one green button */
   --danger: #b4544a;
   --radius: 10px;
-  --col-w: 300px;
+  --col-w: 300px;        /* comfortable width, never exceeded */
+  --col-min: 206px;      /* squeezed floor before the board scrolls */
   --topbar-h: 78px;
 }
 
@@ -164,7 +165,6 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .page-head h1 { margin: 0; font-size: 22px; letter-spacing: -0.3px; }
-.page-meta { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
 
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
 
@@ -227,15 +227,18 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   flex: 1;
   display: flex;
   align-items: stretch;
-  gap: 22px;
+  gap: clamp(10px, 1.5vw, 22px);
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 2px 26px 20px;
+  padding: 2px clamp(12px, 2vw, 26px) 20px;
 }
 
 .column {
-  flex: 0 0 var(--col-w);
-  width: var(--col-w);
+  /* Shrink before scrolling: grow to --col-w when there is room, give way down
+     to --col-min when there is not, and only then hand over to overflow-x. */
+  flex: 1 1 var(--col-w);
+  min-width: var(--col-min);
+  max-width: var(--col-w);
   max-height: 100%;
   display: flex;
   flex-direction: column;
@@ -248,10 +251,11 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+  gap: 6px;
+  padding: 0 10px;
   margin-bottom: 10px;
   border-radius: 10px;
+  min-width: 0;
   background: var(--c, #9a988c);
   color: #fff;
   font-weight: 700;
@@ -611,7 +615,6 @@ code { background: #efece0; padding: 1px 5px; border-radius: 4px; font-size: 12p
   .main { order: 1; flex: 0 0 auto; }
   .topbar { height: var(--topbar-h); padding: 0 12px; }
   .page-head h1 { font-size: 17px; }
-  .page-meta { display: none; }
   .topbar-actions { gap: 6px; }
   .topbar-actions input[type="search"] { width: 38px; height: 34px; padding: 0 10px; transition: width 0.18s ease; }
   .topbar-actions input[type="search"]:focus { width: 150px; }
