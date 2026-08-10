@@ -10,19 +10,29 @@
 
 const REPO = { owner: 'toniilein', name: 'workforce', branch: 'main', dir: 'tasks' };
 
+// The workflow, left to right:
+//   Backlog -> Weekly -> Focus -> Review (what a bot handed back) -> Done
+// Admin sits apart on the right and is human-only; agents leave it alone.
 const SECTIONS = [
-  { id: 'todo', title: 'Todo', color: '#3d4451' },
-  { id: 'doing', title: 'Doing', color: '#4f8ef7' },
-  { id: 'blocked', title: 'Blocked', color: '#e2504f' },
+  { id: 'backlog', title: 'Backlog', color: '#3d4451' },
+  { id: 'weekly', title: 'Weekly', color: '#4f8ef7' },
+  { id: 'focus', title: 'Focus', color: '#e2504f' },
   { id: 'review', title: 'Review', color: '#f59e0b' },
   { id: 'done', title: 'Done', color: '#4bc07a' },
+  { id: 'admin', title: 'Admin', color: '#8b7fa8', humansOnly: true },
 ];
 
+// Files written before the rename still say todo/doing/blocked. Map them rather
+// than stranding those tasks in the first column.
+const LEGACY_STATUS = { todo: 'backlog', doing: 'weekly', blocked: 'focus' };
+
 // Known people. Anyone else named in a file still appears, in grey.
+// `img` is optional: drop a square image in docs/avatars/ and name it here.
+// If the file is missing the initials show instead, so nothing breaks.
 const PEOPLE = {
-  toni: { name: 'Toni', color: '#2f3542' },
-  Adi: { name: 'Adi', color: '#6b7ce0' },
-  '007': { name: 'Pookachu Bot', color: '#5b8aa6' },
+  toni: { name: 'Toni', color: '#2f3542', img: './avatars/toni.jpeg' },
+  Adi: { name: 'Adi', color: '#6b7ce0', img: './avatars/adi.jpeg' },
+  '007': { name: 'Pookachu Bot', color: '#5b8aa6', img: './avatars/pookachu.png' },
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -32,6 +42,19 @@ const el = (tag, cls, text) => {
   if (text != null) n.textContent = text;
   return n;
 };
+
+// A small inline icon. The markup is fixed here — never built from task data —
+// so setting innerHTML carries no user input.
+const GLYPHS = {
+  clip:
+    '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.2 5.8 10a1.7 1.7 0 0 0 2.4 2.4l5.1-5.1a3 3 0 0 0-4.2-4.2L3.9 8.3a4.3 4.3 0 0 0 6.1 6.1l4.3-4.3"/></svg>',
+};
+
+function glyph(name) {
+  const span = el('span', 'micon');
+  span.innerHTML = GLYPHS[name] || '';
+  return span;
+}
 
 // Bind defensively. Pages caches HTML and JS separately, so a deploy can briefly
 // pair new JS with old HTML; without this, one missing element throws and takes
@@ -185,17 +208,22 @@ function parseTask(file, text) {
     }
   }
 
-  const status = (meta.status || 'todo').toLowerCase();
+  const raw = (meta.status || 'backlog').toLowerCase();
+  const status = LEGACY_STATUS[raw] || raw;
   return {
     file,
     // The filename is the id, so a file written without the field (an older
     // client, or a hand-made file) still resolves instead of losing its identity.
     id: meta.id || (/^LC-\d+$/.test(file.replace(/\.md$/, '')) ? file.replace(/\.md$/, '') : ''),
     title: meta.title || file.replace(/\.md$/, ''), // id-named files have no title to infer
-    status: SECTIONS.some((s) => s.id === status) ? status : 'todo',
+    status: SECTIONS.some((s) => s.id === status) ? status : 'backlog',
     assignee: meta.assignee || '',
     due: /^\d{4}-\d{2}-\d{2}$/.test(meta.due || '') ? meta.due : '',
     labels: (meta.labels || '').split(',').map((s) => s.trim()).filter(Boolean),
+    parent: (meta.parent || '').trim(),
+    links: (meta.links || '').split(',').map((s) => s.trim()).filter(Boolean),
+    // Archived tasks stay in the repo as a record; they just leave the board.
+    archived: /^(true|yes)$/i.test((meta.archived || '').trim()),
     body,
   };
 }
@@ -209,6 +237,9 @@ function toMarkdown(task) {
     `assignee: ${task.assignee || ''}`,
     `due: ${task.due || ''}`,
     `labels: ${task.labels.join(', ')}`,
+    ...(task.parent ? [`parent: ${task.parent}`] : []),
+    ...(task.links?.length ? [`links: ${task.links.join(', ')}`] : []),
+    ...(task.archived ? ['archived: true'] : []),
     '---',
     '',
     task.body || '',
@@ -261,6 +292,25 @@ function initials(name) {
 const personName = (id) => PEOPLE[id]?.name || id;
 const personColor = (id) => PEOPLE[id]?.color || '#9a988c';
 
+// Fills an avatar element with that person's picture, keeping the initials
+// underneath: if the image is missing or fails to load, nothing looks broken.
+function paintAvatar(node, id) {
+  node.textContent = initials(personName(id));
+  node.style.background = personColor(id);
+  node.title = personName(id);
+  const src = PEOPLE[id]?.img;
+  if (!src) return node;
+  const img = new Image();
+  img.src = src;
+  img.alt = personName(id);
+  img.className = 'avatar-img';
+  img.addEventListener('load', () => {
+    node.textContent = '';
+    node.appendChild(img);
+  });
+  return node;
+}
+
 const LABEL_TINTS = [
   { bg: '#e9ead6', fg: '#5c6132', dot: '#8a944e' },
   { bg: '#f5e7cd', fg: '#8a6420', dot: '#c9922e' },
@@ -300,7 +350,7 @@ function matchesFilter(task) {
 }
 
 function cardNode(task) {
-  const card = el('div', `card ${task.status}`);
+  const card = el('div', `card ${task.status}${task.archived ? ' is-archived' : ''}`);
   card.dataset.file = task.file;
   card.draggable = canEdit();
   card.title = canEdit() ? 'Click to edit · drag to move' : 'Click to open on GitHub';
@@ -321,17 +371,42 @@ function cardNode(task) {
 
   const meta = el('div', 'card-meta');
   if (task.id) meta.appendChild(el('span', 'task-id', task.id));
+  if (task.parent) {
+    const up = el('span', 'rel-chip', `↳ ${task.parent}`);
+    up.title = `Part of ${byId(task.parent)?.title || task.parent}`;
+    meta.appendChild(up);
+  }
+  const kids = childrenOf(task.id);
+  if (kids.length) {
+    const done = kids.filter((k) => k.status === 'done').length;
+    const chip = el('span', 'rel-chip', `${done}/${kids.length} subtasks`);
+    meta.appendChild(chip);
+  }
+  const files = attachmentsOf(task);
+  if (files.length) {
+    const clip = el('span', 'badge');
+    clip.append(glyph('clip'), document.createTextNode(String(files.length)));
+    clip.title = files.length === 1 ? files[0].name : `${files.length} attachments`;
+    meta.appendChild(clip);
+  }
+  if (task.archived) {
+    meta.appendChild(el('span', 'rel-chip archived', 'archived'));
+    if (canEdit()) {
+      const restore = el('button', 'card-action', 'Restore');
+      restore.title = 'Put this task back on the board';
+      restore.addEventListener('click', (e) => {
+        e.stopPropagation(); // the card itself opens the detail panel
+        setArchived(task, false);
+      });
+      meta.appendChild(restore);
+    }
+  }
   if (task.due && task.status !== 'done')
     meta.appendChild(el('span', 'due' + (isOverdue(task.due) ? ' overdue' : ''), formatDate(task.due)));
 
   const avatar = el('div', 'avatar' + (task.assignee ? '' : ' empty'));
-  if (task.assignee) {
-    avatar.textContent = initials(personName(task.assignee));
-    avatar.style.background = personColor(task.assignee);
-    avatar.title = personName(task.assignee);
-  } else {
-    avatar.title = 'Unassigned';
-  }
+  if (task.assignee) paintAvatar(avatar, task.assignee);
+  else avatar.title = 'Unassigned';
   meta.appendChild(avatar);
   card.appendChild(meta);
 
@@ -354,6 +429,15 @@ function cardNode(task) {
 }
 
 function render() {
+  if (view === 'calendar') {
+    renderCalendar();
+    renderWorkload();
+    renderLabels();
+    renderConnection();
+    if (openFile && !$('#drawer').hidden) renderDrawer();
+    if (!busy) $('#page-meta').textContent = metaLine();
+    return;
+  }
   const board = $('#board');
   board.innerHTML = '';
 
@@ -364,8 +448,40 @@ function render() {
     const head = el('div', 'col-head');
     head.style.setProperty('--c', section.color);
     head.append(el('span', 'title', section.title));
-    const visible = tasks.filter((t) => t.status === section.id && matchesFilter(t));
+    if (section.humansOnly) {
+      const tag = el('span', 'head-note', 'humans');
+      tag.title = 'Agents leave this column alone';
+      head.appendChild(tag);
+    }
+    const visible = tasks.filter((t) => t.status === section.id && onBoard(t) && matchesFilter(t));
     head.appendChild(el('span', 'count', String(visible.length)));
+
+    // Finished work piles up: clear it from the header, where you look at it.
+    if (section.id === 'done' && canEdit()) {
+      const ready = tasks.filter((t) => t.status === 'done' && !t.archived).length;
+      if (ready) {
+        const sweep = el('button', 'head-action', `Archive all (${ready})`);
+        sweep.title = 'Move finished tasks off the board — the files stay in the repo';
+        sweep.addEventListener('click', (e) => {
+          e.stopPropagation(); // the header itself renames on double-click
+          archiveDone();
+        });
+        head.appendChild(sweep);
+      }
+
+      // While archived work is on screen, offer the reverse of Archive all.
+      if (showArchived) {
+        const back = tasks.filter((t) => t.status === 'done' && t.archived).length;
+        if (back) {
+          const restoreAll = el('button', 'head-action', `Restore all (${back})`);
+          restoreAll.addEventListener('click', (e) => {
+            e.stopPropagation();
+            restoreDone();
+          });
+          head.appendChild(restoreAll);
+        }
+      }
+    }
 
     const body = el('div', 'col-body');
     for (const task of visible) body.appendChild(cardNode(task));
@@ -373,6 +489,8 @@ function render() {
     const add = el('button', 'add-card', '+ Add task');
     add.addEventListener('click', () => startNewCard(section.id, body, add));
     body.appendChild(add);
+
+
 
     if (canEdit()) {
       body.addEventListener('dragover', (e) => {
@@ -400,7 +518,7 @@ function render() {
 }
 
 function metaLine() {
-  const open = tasks.filter((t) => t.status !== 'done').length;
+  const open = tasks.filter((t) => t.status !== 'done' && onBoard(t)).length;
   const mode = gateway.active
     ? (gateway.canWrite ? 'server-connected' : 'read-only (server has no token)')
     : gh.connected
@@ -415,7 +533,7 @@ function renderWorkload() {
   const load = {};
   let unassigned = 0;
   for (const task of tasks) {
-    if (task.status === 'done') continue;
+    if (task.status === 'done' || !onBoard(task)) continue;
     if (task.assignee) load[task.assignee] = (load[task.assignee] || 0) + 1;
     else unassigned++;
   }
@@ -431,20 +549,30 @@ function renderWorkload() {
     return node;
   };
 
-  strip.appendChild(chip('Everyone', tasks.filter((t) => t.status !== 'done').length, ''));
+  strip.appendChild(chip('Everyone', tasks.filter((t) => t.status !== 'done' && onBoard(t)).length, ''));
   const ids = new Set([...Object.keys(PEOPLE), ...tasks.map((t) => t.assignee).filter(Boolean)]);
   for (const id of ids) {
-    const av = el('span', 'wavatar', initials(personName(id)));
-    av.style.background = personColor(id);
+    const av = paintAvatar(el('span', 'wavatar'), id);
     strip.appendChild(chip(personName(id), load[id] || 0, id, av));
   }
   if (unassigned) strip.appendChild(chip('Unassigned', unassigned, '__none__', el('span', 'wavatar empty')));
+
+  const archived = tasks.filter((t) => t.archived).length;
+  if (archived) {
+    const toggle = el('button', 'wchip archive-toggle' + (showArchived ? ' active' : ''));
+    toggle.append(el('span', 'wname', showArchived ? 'Hide archived' : 'Show archived'), el('span', 'wcount', String(archived)));
+    toggle.addEventListener('click', () => {
+      showArchived = !showArchived;
+      render();
+    });
+    strip.appendChild(toggle);
+  }
 }
 
 function renderLabels() {
   const list = $('#labels');
   list.innerHTML = '';
-  const names = [...new Set(tasks.flatMap((t) => t.labels))].sort((a, b) => a.localeCompare(b));
+  const names = [...new Set(tasks.filter(onBoard).flatMap((t) => t.labels))].sort((a, b) => a.localeCompare(b));
   if (!names.length) return list.appendChild(el('div', 'muted small', 'No labels yet'));
   for (const name of names) {
     const chip = el('button', 'lchip' + (filter.label === name ? ' active' : ''));
@@ -462,7 +590,7 @@ function renderSectionTabs() {
   const strip = $('#sectiontabs');
   strip.innerHTML = '';
   SECTIONS.forEach((section, i) => {
-    const count = tasks.filter((t) => t.status === section.id && matchesFilter(t)).length;
+    const count = tasks.filter((t) => t.status === section.id && onBoard(t) && matchesFilter(t)).length;
     const tab = el('button', 'sectiontab' + (i === 0 ? ' active' : ''));
     tab.style.setProperty('--c', section.color);
     tab.dataset.status = section.id;
@@ -549,9 +677,100 @@ function renderConnection() {
       : 'Read-only — connect a token to edit';
 }
 
+/* ---------------------------------------------------------------- calendar */
+
+const isoDay = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+function setView(next) {
+  view = next;
+  const stale = $('#board');
+  if (stale && next !== 'board') stale.innerHTML = '';
+  $('#view-board')?.classList.toggle('active', next === 'board');
+  $('#view-calendar')?.classList.toggle('active', next === 'calendar');
+  const board = $('#board');
+  const cal = $('#calendar');
+  if (board) board.hidden = next !== 'board';
+  if (cal) cal.hidden = next !== 'calendar';
+  const tabs = $('#sectiontabs');
+  if (tabs) tabs.style.display = next === 'board' ? '' : 'none';
+  render();
+}
+
+function renderCalendar() {
+  const grid = $('#cal-grid');
+  if (!grid) return;
+  const today = new Date();
+  if (!calMonth) calMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const title = $('#cal-title');
+  if (title) title.textContent = calMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  // Only dated, visible tasks land on the grid.
+  const dated = tasks.filter((t) => t.due && onBoard(t) && matchesFilter(t));
+  const byDay = new Map();
+  for (const task of dated) {
+    if (!byDay.has(task.due)) byDay.set(task.due, []);
+    byDay.get(task.due).push(task);
+  }
+
+  const undated = tasks.filter((t) => !t.due && onBoard(t) && matchesFilter(t)).length;
+  const note = $('#cal-undated');
+  if (note) note.textContent = undated ? `${undated} task${undated === 1 ? '' : 's'} without a date` : '';
+
+  grid.innerHTML = '';
+  for (const name of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+    grid.appendChild(el('div', 'cal-weekday', name));
+  }
+
+  // Start on the Monday of the week containing the 1st.
+  const first = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1);
+  const offset = (first.getDay() + 6) % 7;
+  const start = new Date(first);
+  start.setDate(first.getDate() - offset);
+
+  for (let i = 0; i < 42; i++) {
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    const iso = isoDay(day);
+    const outside = day.getMonth() !== calMonth.getMonth();
+    const cell = el('div', 'cal-day' + (outside ? ' outside' : '') + (iso === isoDay(today) ? ' today' : ''));
+    cell.appendChild(el('div', 'cal-date', String(day.getDate())));
+
+    for (const task of byDay.get(iso) || []) {
+      const chip = el('button', 'cal-task' + (task.status === 'done' ? ' done' : ''));
+      const dot = el('span', 'linkdot');
+      dot.style.background = SECTIONS.find((sec) => sec.id === task.status)?.color || '#9a988c';
+      chip.append(dot, el('span', 'cal-task-title', task.title));
+      chip.title = `${task.id} · ${task.title} (${task.status})`;
+      chip.addEventListener('click', () => openDrawer(task.file));
+      cell.appendChild(chip);
+    }
+    grid.appendChild(cell);
+  }
+}
+
 /* ------------------------------------------------------------------ actions */
 
 const byFile = (file) => tasks.find((t) => t.file === file);
+const byId = (id) => tasks.find((t) => t.id === id);
+const childrenOf = (id) => (id ? tasks.filter((t) => t.parent === id) : []);
+
+// Archived work is hidden by default but never removed from the repo.
+let showArchived = false;
+let view = 'board';                 // 'board' | 'calendar'
+let calMonth = null;                // first day of the month on screen
+const onBoard = (t) => showArchived || !t.archived;
+
+// A task cannot be filed under itself or under one of its own descendants.
+function wouldCycle(task, parentId) {
+  let cursor = byId(parentId);
+  while (cursor) {
+    if (cursor.id === task.id) return true;
+    cursor = cursor.parent ? byId(cursor.parent) : null;
+  }
+  return false;
+}
 
 // A write failed: surface it where it can be acted on, not in a popup.
 function reportWriteFailure(err) {
@@ -580,32 +799,58 @@ async function moveTask(file, status) {
   }
 }
 
-// Inline composer in the column — no browser prompt.
+// Inline composer in the column — no browser prompt. Title, date and who, so a
+// task can be filed complete instead of needing to be opened again afterwards.
 function startNewCard(status, body, addBtn) {
-  if (body.querySelector('.new-card-input')) return;
-  const input = el('textarea', 'new-card-input');
-  input.rows = 2;
-  input.placeholder = 'Task title — Enter to save, Esc to cancel';
-  body.insertBefore(input, addBtn);
-  input.focus();
+  if (body.querySelector('.composer')) return;
+
+  const box = el('div', 'composer');
+  const title = el('textarea', 'new-card-input');
+  title.rows = 2;
+  title.placeholder = 'Task title — Enter to save, Esc to cancel';
+
+  const row = el('div', 'composer-row');
+  const due = el('input', 'composer-due');
+  due.type = 'date';
+  due.title = 'Due date (optional)';
+
+  const who = el('select', 'composer-who');
+  who.title = 'Responsible (optional)';
+  who.appendChild(el('option', null, 'Unassigned')).value = '';
+  for (const id of Object.keys(PEOPLE)) {
+    const opt = el('option', null, personName(id));
+    opt.value = id;
+    who.appendChild(opt);
+  }
+
+  const save = el('button', 'primary small', 'Add');
+  row.append(due, who, save);
+  box.append(title, row);
+  body.insertBefore(box, addBtn);
+  title.focus();
 
   let settled = false;
-  const finish = async (save) => {
+  const finish = async (keep) => {
     if (settled) return;
     settled = true;
-    const title = input.value.trim();
-    input.remove();
-    if (save && title) await createTask(status, title);
+    const text = title.value.trim();
+    box.remove();
+    if (keep && text) await createTask(status, text, { due: due.value || '', assignee: who.value || '' });
     else render();
   };
-  input.addEventListener('keydown', (e) => {
+
+  save.addEventListener('click', () => finish(true));
+  title.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       finish(true);
     }
     if (e.key === 'Escape') finish(false);
   });
-  input.addEventListener('blur', () => finish(true));
+  // Clicking the date or person field must not count as abandoning the card.
+  box.addEventListener('focusout', (e) => {
+    if (!box.contains(e.relatedTarget)) finish(true);
+  });
 }
 
 // Sequential and human-quotable: "look at LC-014". Never reuses a number, so an
@@ -619,7 +864,7 @@ function nextTaskId() {
   return `LC-${String(next).padStart(3, '0')}`;
 }
 
-async function createTask(status, title) {
+async function createTask(status, title, extra = {}) {
   if (!canEdit()) {
     toast('This board is read-only.', 'error');
     render();
@@ -630,7 +875,7 @@ async function createTask(status, title) {
   const id = nextTaskId();
   const file = `${id}.md`;
 
-  const task = { file, id, title, status, assignee: '', due: '', labels: [], body: '', sha: null };
+  const task = { file, id, title, status, assignee: '', due: '', labels: [], parent: '', links: [], archived: false, body: '', sha: null, ...extra };
   tasks.push(task); // optimistic, so the card appears immediately
   render();
   setBusy(true);
@@ -671,6 +916,70 @@ function requestDelete(file) {
   removeTask(file);
 }
 
+async function setArchived(task, archived) {
+  const before = task.archived;
+  task.archived = archived;
+  render();
+  try {
+    await saveTask(task, `task: ${archived ? 'archive' : 'restore'} ${task.id || task.file}`);
+    toast(archived ? `${task.id} archived` : `${task.id} restored`);
+  } catch (err) {
+    task.archived = before;
+    render();
+    reportWriteFailure(err);
+  }
+}
+
+// Clear finished work off the board in one go; the files stay in the repo.
+async function archiveDone() {
+  const done = tasks.filter((t) => t.status === 'done' && !t.archived);
+  if (!done.length) return toast('Nothing in Done to archive.');
+  setBusy(true);
+  let ok = 0;
+  try {
+    for (const task of done) {
+      task.archived = true;
+      try {
+        await saveTask(task, `task: archive ${task.id || task.file}`);
+        ok++;
+      } catch (err) {
+        task.archived = false;
+        reportWriteFailure(err);
+        break; // stop at the first refusal rather than hammering GitHub
+      }
+    }
+  } finally {
+    setBusy(false);
+    render();
+    if (ok) toast(`Archived ${ok} task${ok === 1 ? '' : 's'}`);
+  }
+}
+
+// The mirror of archiveDone: bring finished work back onto the board.
+async function restoreDone() {
+  const archived = tasks.filter((t) => t.status === 'done' && t.archived);
+  if (!archived.length) return;
+  setBusy(true);
+  let ok = 0;
+  try {
+    for (const task of archived) {
+      task.archived = false;
+      try {
+        await saveTask(task, `task: restore ${task.id || task.file}`);
+        ok++;
+      } catch (err) {
+        task.archived = true;
+        reportWriteFailure(err);
+        break;
+      }
+    }
+  } finally {
+    setBusy(false);
+    render();
+    if (ok) toast(`Restored ${ok} task${ok === 1 ? '' : 's'}`);
+  }
+}
+
 async function removeTask(file) {
   const task = byFile(file);
   if (!task) return;
@@ -689,6 +998,87 @@ async function removeTask(file) {
   }
 }
 
+/* -------------------------------------------------------------- attachments */
+
+const readAsBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    reader.onload = () => resolve(String(reader.result).split(',')[1]); // strip the data: prefix
+    reader.readAsDataURL(file);
+  });
+
+// Keep the name recognisable but safe for a URL and for the API's validation.
+const safeFileName = (name) =>
+  name
+    .replace(/[^\w .-]+/g, '-')
+    .replace(/^[-.]+/, '')
+    .slice(-90) || 'file';
+
+async function attachFiles(task, files) {
+  if (!canEdit()) return toast('This board is read-only.', 'error');
+  if (!task.id) return toast('This task has no id to attach files to.', 'error');
+
+  const list = [...files];
+  const tooBig = list.filter((f) => f.size > MAX_ATTACHMENT_BYTES);
+  for (const f of tooBig) toast(`${f.name} is over ${MAX_ATTACHMENT_BYTES / 1e6} MB`, 'error');
+
+  const usable = list.filter((f) => f.size <= MAX_ATTACHMENT_BYTES);
+  if (!usable.length) return;
+
+  setBusy(true);
+  const added = [];
+  try {
+    for (const file of usable) {
+      const name = safeFileName(file.name);
+      try {
+        const url = await uploadAttachment(REPO, task.id, name, await readAsBase64(file));
+        // Images embed so they show up; anything else becomes a plain link.
+        added.push(/\.(png|jpe?g|gif|webp|svg)$/i.test(name) ? `![${name}](${url})` : `[${name}](${url})`);
+      } catch (err) {
+        reportWriteFailure(err);
+      }
+    }
+  } finally {
+    setBusy(false);
+  }
+
+  if (!added.length) return;
+  const heading = '## Attachments';
+  const body = task.body.includes(heading)
+    ? `${task.body.trimEnd()}\n${added.join('\n')}`
+    : `${task.body.trimEnd()}\n\n${heading}\n${added.join('\n')}`;
+  patchOpen({ body: body.trim() }, `task: attach ${added.length} file(s) to ${task.id}`);
+  toast(`Attached ${added.length} file${added.length === 1 ? '' : 's'}`);
+}
+
+async function removeAttachment(task, file) {
+  if (!canEdit()) return toast('This board is read-only.', 'error');
+  setBusy(true);
+  try {
+    await deleteAttachment(REPO, task.id, file.name);
+    // Take the link out of the brief as well, or the task still points at it.
+    const escaped = file.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const line = new RegExp(`^.*!?\\[[^\\]]*\\]\\(${escaped}\\).*$\\n?`, 'm');
+    const body = task.body.replace(line, '').replace(/\n{3,}/g, '\n\n').trimEnd();
+    patchOpen({ body }, `task: remove ${file.name} from ${task.id}`);
+    toast(`Removed ${file.name}`);
+  } catch (err) {
+    reportWriteFailure(err);
+  } finally {
+    setBusy(false);
+  }
+}
+
+// Anything already attached, pulled back out of the description.
+function attachmentsOf(task) {
+  const found = [];
+  const re = /!?\[([^\]]+)\]\((https:\/\/raw\.githubusercontent\.com\/[^)\s]+)\)/g;
+  let m;
+  while ((m = re.exec(task.body || ''))) found.push({ name: m[1], url: m[2] });
+  return found;
+}
+
 /* ------------------------------------------------------------------ drawer */
 
 function openDrawer(file) {
@@ -696,6 +1086,18 @@ function openDrawer(file) {
   $('#drawer').hidden = false;
   $('#scrim').hidden = false;
   renderDrawer();
+}
+
+// One row in the subtask / related lists — click to jump to that task.
+function taskLink(task) {
+  const li = el('li', 'linkrow' + (task.status === 'done' ? ' done' : ''));
+  const dot = el('span', 'linkdot');
+  dot.style.background = SECTIONS.find((s) => s.id === task.status)?.color || '#9a988c';
+  const button = el('button', 'linkbtn');
+  button.append(el('span', 'task-id', task.id), el('span', null, task.title));
+  button.addEventListener('click', () => openDrawer(task.file));
+  li.append(dot, button);
+  return li;
 }
 
 function closeDrawer() {
@@ -741,7 +1143,96 @@ function renderDrawer() {
   }
   status.value = task.status;
 
+  // Part of: every other task, minus anything that would create a loop.
+  const parentSel = $('#d-parent');
+  if (parentSel) {
+    parentSel.innerHTML = '<option value="">— none —</option>';
+    for (const other of tasks) {
+      if (other.id === task.id || !other.id || wouldCycle(task, other.id)) continue;
+      const opt = el('option', null, `${other.id} · ${other.title}`);
+      opt.value = other.id;
+      parentSel.appendChild(opt);
+    }
+    parentSel.value = task.parent || '';
+  }
+  if (!editing) {
+    const linksInput = $('#d-links');
+    if (linksInput) linksInput.value = (task.links || []).join(', ');
+  }
+
+  const kids = childrenOf(task.id);
+  const kidsWrap = $('#d-subtasks-wrap');
+  if (kidsWrap) {
+    kidsWrap.hidden = !canEdit() && !kids.length;
+    const list = $('#d-subtasks');
+    const count = $('#d-subtask-count');
+    if (count) count.textContent = kids.length ? `${kids.filter((k) => k.status === 'done').length}/${kids.length}` : '';
+    if (list) {
+      list.innerHTML = '';
+      for (const kid of kids) list.appendChild(taskLink(kid));
+      if (!kids.length) list.appendChild(el('li', 'muted small', 'None yet'));
+    }
+  }
+
+  const related = (task.links || []).map(byId).filter(Boolean);
+  const relWrap = $('#d-related-wrap');
+  if (relWrap) {
+    relWrap.hidden = !related.length;
+    const list = $('#d-related');
+    if (list) {
+      list.innerHTML = '';
+      for (const other of related) list.appendChild(taskLink(other));
+    }
+  }
+
   $('#d-file').textContent = `${task.id ? task.id + ' · ' : ''}${REPO.dir}/${task.file}`;
+  const files = attachmentsOf(task);
+  const attachWrap = $('#d-attach-wrap');
+  if (attachWrap) {
+    attachWrap.hidden = !files.length;
+    const list = $('#d-attachments');
+    if (list) {
+      list.innerHTML = '';
+      for (const f of files) {
+        const li = el('li', 'attachrow');
+        const link = el('a', 'attachlink', f.name);
+        link.href = f.url;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        if (/\.(png|jpe?g|gif|webp|svg)$/i.test(f.name)) {
+          const thumb = new Image();
+          thumb.src = f.url;
+          thumb.className = 'attachthumb';
+          thumb.alt = f.name;
+          li.appendChild(thumb);
+        }
+        li.appendChild(link);
+        if (canEdit()) {
+          const del = el('button', 'icon-btn attach-remove', '✕');
+          del.title = `Delete ${f.name} from the repo`;
+          del.addEventListener('click', () => {
+            if (del.dataset.armed) return removeAttachment(task, f);
+            del.dataset.armed = '1';
+            del.textContent = 'delete?';
+            setTimeout(() => {
+              delete del.dataset.armed;
+              del.textContent = '✕';
+            }, 4000);
+          });
+          li.appendChild(del);
+        }
+        list.appendChild(li);
+      }
+    }
+  }
+  const zone = $('#d-dropzone');
+  if (zone) zone.hidden = !canEdit();
+
+  const archiveBtn = $('#d-archive');
+  if (archiveBtn) {
+    archiveBtn.textContent = task.archived ? 'Restore' : 'Archive';
+    archiveBtn.hidden = !canEdit();
+  }
   $('#d-github').href = editUrl(task.file);
 }
 
@@ -866,7 +1357,21 @@ on('#search', 'input', (e) => {
   render();
 });
 on('#btn-refresh', 'click', () => start());
-on('#btn-new', 'click', () => createTask('todo'));
+on('#view-board', 'click', () => setView('board'));
+on('#view-calendar', 'click', () => setView('calendar'));
+on('#cal-prev', 'click', () => {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1);
+  renderCalendar();
+});
+on('#cal-next', 'click', () => {
+  calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1);
+  renderCalendar();
+});
+on('#cal-today', 'click', () => {
+  const now = new Date();
+  calMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  renderCalendar();
+});
 const repoLink = $('#repo-link');
 if (repoLink) repoLink.href = `https://github.com/${REPO.owner}/${REPO.name}/tree/${REPO.branch}/${REPO.dir}`;
 
@@ -1062,6 +1567,78 @@ on('#d-assignee', 'change', (e) =>
   patchOpen({ assignee: e.target.value }, `task: assign ${openFile.replace(/\.md$/, '')}`)
 );
 on('#d-status', 'change', (e) => moveTask(openFile, e.target.value));
+on('#d-parent', 'change', (e) => {
+  const task = byFile(openFile);
+  if (!task) return;
+  const value = e.target.value;
+  if (value && wouldCycle(task, value)) {
+    toast('That would put the task inside itself.', 'error');
+    e.target.value = task.parent || '';
+    return;
+  }
+  patchOpen({ parent: value }, `task: parent ${task.id} -> ${value || 'none'}`);
+});
+
+on('#d-links', 'change', (e) => {
+  const task = byFile(openFile);
+  if (!task) return;
+  const wanted = e.target.value.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
+  const unknown = wanted.filter((id) => !byId(id));
+  if (unknown.length) {
+    toast(`No such task: ${unknown.join(', ')}`, 'error');
+    e.target.value = (task.links || []).join(', ');
+    return;
+  }
+  patchOpen({ links: wanted.filter((id) => id !== task.id) }, `task: links ${task.id}`);
+});
+
+// Adding a subtask creates a real task already filed under this one.
+async function addSubtask() {
+  const input = $('#d-subtask-new');
+  const parent = byFile(openFile);
+  if (!input || !parent) return;
+  const title = input.value.trim();
+  if (!title) return;
+  input.value = '';
+  await createTask(parent.status === 'done' ? 'backlog' : parent.status, title, { parent: parent.id });
+  renderDrawer();
+}
+on('#d-subtask-add', 'click', addSubtask);
+on('#d-subtask-new', 'keydown', (e) => e.key === 'Enter' && addSubtask());
+
+on('#d-archive', 'click', () => {
+  const task = byFile(openFile);
+  if (task) setArchived(task, !task.archived);
+});
+
+// The whole dialog is the drop target, so you can let go anywhere on it.
+const drawerEl = $('#drawer');
+if (drawerEl) {
+  const stop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  drawerEl.addEventListener('dragover', (e) => {
+    stop(e);
+    if (canEdit()) drawerEl.classList.add('dropping');
+  });
+  drawerEl.addEventListener('dragleave', (e) => {
+    if (!drawerEl.contains(e.relatedTarget)) drawerEl.classList.remove('dropping');
+  });
+  drawerEl.addEventListener('drop', (e) => {
+    stop(e);
+    drawerEl.classList.remove('dropping');
+    const task = byFile(openFile);
+    if (task && e.dataTransfer?.files?.length) attachFiles(task, e.dataTransfer.files);
+  });
+}
+on('#d-pick', 'click', () => $('#d-file-input')?.click());
+on('#d-file-input', 'change', (e) => {
+  const task = byFile(openFile);
+  if (task && e.target.files?.length) attachFiles(task, e.target.files);
+  e.target.value = '';
+});
+
 on('#d-delete', 'click', () => requestDelete(openFile));
 
 async function start() {

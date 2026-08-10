@@ -23,13 +23,10 @@ Everything under the `---` block is the description — the brief.
 | --- | --- |
 | `id` | `LC-###`, assigned once and never changed — the stable way to refer to a task |
 | `title` | any text. Falls back to the filename if missing. |
-| `status` | `backlog`, `weekly`, `focus`, `review`, `done`, `admin` — decides the column. Default `backlog`. |
+| `status` | `todo`, `doing`, `blocked`, `review`, `done` — decides the column. Default `todo`. |
 | `assignee` | `toni`, `Adi`, `007` (Pookachu Bot), or empty for unassigned |
 | `due` | `YYYY-MM-DD`, or leave empty |
 | `labels` | comma-separated, or leave empty |
-| `parent` | another task's id, e.g. `LC-002` — makes this a subtask of it |
-| `links` | comma-separated ids of related tasks, e.g. `LC-003, LC-004` |
-| `archived` | `true` to keep the task in the repo but off the board |
 
 Files are named after the id alone: `LC-004.md`. Because the filename never depends on the title,
 renaming a task is a one-line edit inside the file — nothing has to move, and a task can never be

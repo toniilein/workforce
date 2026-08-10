@@ -40,11 +40,26 @@ const REPO = {
 };
 
 const TOKEN = process.env.GITHUB_TOKEN || '';
+// GitHub's contents API is fine with a few MB; beyond that it gets unreliable,
+// and a task board does not need to carry large media.
+const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || 5_000_000);
 const PASSWORD = process.env.BOARD_PASSWORD || '';
+
+// Where tasks come from. With no token there is nothing useful GitHub will let
+// us write and its anonymous read limit is 60/hour, so a checkout with a tasks/
+// folder is served straight from disk instead: full editing, no token, no
+// limit. Commit and push when you are happy with what you see.
+const LOCAL_DIR = path.join(__dirname, REPO.dir);
+const LOCAL_MODE =
+  process.env.BOARD_SOURCE === 'local' ||
+  (process.env.BOARD_SOURCE !== 'github' && !TOKEN && fs.existsSync(LOCAL_DIR));
 
 /* ------------------------------------------------------------------ github */
 
 const API = 'https://api.github.com';
+const rawUrl = (path) =>
+  `https://raw.githubusercontent.com/${REPO.owner}/${REPO.name}/${REPO.branch}/${path}`;
+
 const contentsUrl = (file) =>
   `${API}/repos/${REPO.owner}/${REPO.name}/contents/${REPO.dir}${file ? `/${encodeURIComponent(file)}` : ''}`;
 
@@ -68,22 +83,47 @@ async function github(url, options = {}) {
   return body;
 }
 
+const isTaskFile = (name) => name.endsWith('.md') && name.toLowerCase() !== 'readme.md';
+
+// A content hash stands in for GitHub's blob sha so the change-detection and
+// conflict logic works identically in both modes.
+const localSha = (text) => crypto.createHash('sha1').update(text).digest('hex');
+
+function listTasksLocal() {
+  return fs
+    .readdirSync(LOCAL_DIR)
+    .filter(isTaskFile)
+    .map((name) => {
+      const text = fs.readFileSync(path.join(LOCAL_DIR, name), 'utf8');
+      return { file: name, sha: localSha(text), text };
+    });
+}
+
 async function listTasks() {
+  if (LOCAL_MODE) return listTasksLocal();
   const entries = await github(`${contentsUrl()}?ref=${REPO.branch}`);
   const files = entries.filter(
     (f) => f.type === 'file' && f.name.endsWith('.md') && f.name.toLowerCase() !== 'readme.md'
   );
-  // Fetch contents in parallel; the API returns them base64-encoded.
+
+  // Read the bodies from the raw CDN rather than the API. Asking the API for
+  // each file costs one of only 60 anonymous calls an hour, so a board with a
+  // dozen tasks used to exhaust the quota in a couple of reloads.
   return Promise.all(
     files.map(async (f) => {
-      const full = await github(`${contentsUrl(f.name)}?ref=${REPO.branch}`);
-      return { file: f.name, sha: full.sha, text: Buffer.from(full.content, 'base64').toString('utf8') };
+      const res = await fetch(`${f.download_url}?t=${Date.now()}`, {
+        headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
+      });
+      if (!res.ok) throw new Error(`could not read ${f.name} (${res.status})`);
+      return { file: f.name, sha: f.sha, text: await res.text() };
     })
   );
 }
 
 const writeTask = (file, text, message, sha) =>
-  github(contentsUrl(file), {
+  LOCAL_MODE
+    ? (fs.writeFileSync(path.join(LOCAL_DIR, file), text), { content: { sha: localSha(text) } })
+    : github(contentsUrl(file), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -95,7 +135,9 @@ const writeTask = (file, text, message, sha) =>
   });
 
 const removeTask = (file, message, sha) =>
-  github(contentsUrl(file), {
+  LOCAL_MODE
+    ? (fs.rmSync(path.join(LOCAL_DIR, file), { force: true }), { ok: true })
+    : github(contentsUrl(file), {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, sha, branch: REPO.branch }),
@@ -109,15 +151,17 @@ function send(res, status, body) {
   res.end(text);
 }
 
-function readBody(req) {
+function readBody(req, maxBytes = 2e6) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let bytes = 0;
+    let tooBig = false;
     req.on('data', (c) => {
-      bytes += c.length;
-      if (bytes > 2e6) {
-        req.destroy();
-        return reject(new Error('payload too large'));
+      if (tooBig) return; // keep draining; killing the socket now would surface
+      bytes += c.length;  // as a connection error instead of a readable message
+      if (bytes > maxBytes) {
+        tooBig = true;
+        return reject(Object.assign(new Error('payload too large'), { tooLarge: true }));
       }
       chunks.push(c);
     });
@@ -148,6 +192,10 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
   '.ico': 'image/x-icon',
 };
 
@@ -173,6 +221,18 @@ async function handle(req, res) {
   }
   const p = url.pathname;
 
+  // Attachments saved locally are not inside docs/, so they get their own route.
+  if (LOCAL_MODE && p.startsWith('/attachments/')) {
+    const rel = decodeURIComponent(p).replace(/^\/+/, '');
+    const abs = path.join(__dirname, path.normalize(rel).replace(/^(\.\.[/\\])+/, ''));
+    if (!abs.startsWith(path.join(__dirname, 'attachments'))) return send(res, 403, { error: 'forbidden' });
+    return fs.readFile(abs, (err, data) => {
+      if (err) return send(res, 404, { error: 'not found' });
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(abs)] || 'application/octet-stream' });
+      res.end(data);
+    });
+  }
+
   if (!p.startsWith('/api/')) return serveStatic(res, p);
 
   // Tells the frontend it is running against a gateway, so it hides all the
@@ -181,7 +241,8 @@ async function handle(req, res) {
     return send(res, 200, {
       mode: 'gateway',
       repo: REPO,
-      canWrite: Boolean(TOKEN),
+      canWrite: Boolean(TOKEN) || LOCAL_MODE,
+      local: LOCAL_MODE,
       needsPassword: Boolean(PASSWORD),
     });
   }
@@ -190,6 +251,8 @@ async function handle(req, res) {
   // anything changed without downloading every task on a timer.
   if (p === '/api/tasks/state' && req.method === 'GET') {
     try {
+      if (LOCAL_MODE)
+        return send(res, 200, { state: listTasksLocal().map(({ file, sha }) => ({ file, sha })) });
       const entries = await github(`${contentsUrl()}?ref=${REPO.branch}`);
       const state = entries
         .filter((f) => f.type === 'file' && f.name.endsWith('.md') && f.name.toLowerCase() !== 'readme.md')
@@ -208,9 +271,111 @@ async function handle(req, res) {
     }
   }
 
+  // Attachments live beside the tasks in the repo, one folder per task id.
+  const upload = /^\/api\/files\/(LC-\d+)\/(.+)$/.exec(p);
+  if (upload && (req.method === 'PUT' || req.method === 'DELETE')) {
+    if (!TOKEN && !LOCAL_MODE)
+      return send(res, 503, { error: 'This board is read-only: no GITHUB_TOKEN is configured.' });
+
+    let body;
+    try {
+      body = await readBody(req, Math.ceil(MAX_UPLOAD_BYTES * 1.4) + 1024);
+    } catch (err) {
+      send(res, 413, { error: `File is too large (limit ${MAX_UPLOAD_BYTES / 1e6} MB).` });
+      req.destroy(); // stop the rest of the upload now the client has been told
+      return;
+    }
+    if (!passwordOk(req.headers['x-board-password'] || body.password))
+      return send(res, 401, { error: 'Wrong board password.' });
+
+    const taskId = upload[1];
+    let name;
+    try {
+      name = decodeURIComponent(upload[2]);
+    } catch {
+      return send(res, 400, { error: 'bad file name' });
+    }
+    // No paths, no surprises: a plain file name with a sane extension.
+    if (!/^[\w][\w .-]{0,80}\.[A-Za-z0-9]{1,8}$/.test(name) || name.includes('..'))
+      return send(res, 400, { error: 'invalid file name' });
+
+    const filePath = `attachments/${taskId}/${name}`;
+
+    // Local mode keeps attachments on disk and serves them from /attachments/…
+    if (LOCAL_MODE) {
+      const onDisk = path.join(__dirname, 'attachments', taskId, name);
+      try {
+        if (req.method === 'DELETE') {
+          fs.rmSync(onDisk, { force: true });
+          return send(res, 200, { ok: true, path: filePath });
+        }
+        const base64Local = String(body.content || '');
+        if (!base64Local) return send(res, 400, { error: 'no file content' });
+        if (Buffer.byteLength(base64Local, 'utf8') * 0.75 > MAX_UPLOAD_BYTES)
+          return send(res, 413, { error: `File is too large (limit ${MAX_UPLOAD_BYTES / 1e6} MB).` });
+        fs.mkdirSync(path.dirname(onDisk), { recursive: true });
+        fs.writeFileSync(onDisk, Buffer.from(base64Local, 'base64'));
+        return send(res, 200, { ok: true, path: filePath, url: `/${filePath}` });
+      } catch (err) {
+        return send(res, 500, { error: err.message });
+      }
+    }
+    const fileApi = `${API}/repos/${REPO.owner}/${REPO.name}/contents/${filePath
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/')}`;
+
+    // Removing an attachment needs the blob's sha; look it up so callers don't
+    // have to track it.
+    if (req.method === 'DELETE') {
+      try {
+        const meta = await github(`${fileApi}?ref=${REPO.branch}`);
+        await github(fileApi, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: body.message || `remove ${name} from ${taskId}`,
+            sha: meta.sha,
+            branch: REPO.branch,
+          }),
+        });
+        return send(res, 200, { ok: true, path: filePath });
+      } catch (err) {
+        // Already gone is a success from the caller's point of view.
+        if (err.status === 404) return send(res, 200, { ok: true, path: filePath, missing: true });
+        return send(res, err.status || 502, { error: err.message });
+      }
+    }
+
+    const base64 = String(body.content || '');
+    if (!base64) return send(res, 400, { error: 'no file content' });
+    if (Buffer.byteLength(base64, 'utf8') * 0.75 > MAX_UPLOAD_BYTES)
+      return send(res, 413, { error: `File is too large (limit ${MAX_UPLOAD_BYTES / 1e6} MB).` });
+
+    try {
+      const result = await github(
+        fileApi,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: body.message || `attach ${name} to ${taskId}`,
+            content: base64,
+            branch: REPO.branch,
+            ...(body.sha ? { sha: body.sha } : {}),
+          }),
+        }
+      );
+      return send(res, 200, { ok: true, path: filePath, url: rawUrl(filePath), sha: result?.content?.sha ?? null });
+    } catch (err) {
+      return send(res, err.status || 502, { error: err.message });
+    }
+  }
+
   const match = /^\/api\/tasks\/([^/]+)$/.exec(p);
   if (match && (req.method === 'PUT' || req.method === 'DELETE')) {
-    if (!TOKEN) return send(res, 503, { error: 'This board is read-only: no GITHUB_TOKEN is configured.' });
+    if (!TOKEN && !LOCAL_MODE)
+      return send(res, 503, { error: 'This board is read-only: no GITHUB_TOKEN is configured.' });
 
     let body;
     try {
@@ -272,6 +437,12 @@ server.listen(PORT, () => {
   console.log(`board gateway → http://localhost:${PORT}`);
   console.log(`serving commit: ${localCommit()}`);
   console.log(`repo: ${REPO.owner}/${REPO.name}@${REPO.branch}/${REPO.dir}`);
-  console.log(TOKEN ? 'github: token loaded (writes enabled)' : 'github: NO TOKEN — read-only');
+  console.log(
+    LOCAL_MODE
+      ? `source: local files in ${REPO.dir}/ (edits stay on disk until you commit)`
+      : TOKEN
+        ? 'source: GitHub, token loaded (writes enabled)'
+        : 'source: GitHub, NO TOKEN — read-only'
+  );
   console.log(PASSWORD ? 'access: password required for changes' : 'access: open (set BOARD_PASSWORD to lock)');
 });

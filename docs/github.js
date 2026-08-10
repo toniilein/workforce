@@ -166,6 +166,63 @@ async function deleteFile(repo, path, message, sha) {
   });
 }
 
+// Attachments: same repo, one folder per task id. Through the gateway the
+// server holds the token; on Pages the page uploads directly.
+const MAX_ATTACHMENT_BYTES = 5_000_000;
+
+async function uploadAttachment(repo, taskId, name, base64) {
+  if (gateway.active) {
+    const res = await fetch(`./api/files/${encodeURIComponent(taskId)}/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(boardPassword.value ? { 'X-Board-Password': boardPassword.value } : {}),
+      },
+      body: JSON.stringify({ content: base64, message: `attach ${name} to ${taskId}` }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Upload failed (${res.status})`);
+    return body.url;
+  }
+
+  const path = `attachments/${taskId}/${name}`;
+  await ghFetch(contentsUrl(repo, path), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: `attach ${name} to ${taskId}`, content: base64, branch: repo.branch }),
+  });
+  return `https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${repo.branch}/${path}`;
+}
+
+async function deleteAttachment(repo, taskId, name) {
+  if (gateway.active) {
+    const res = await fetch(`./api/files/${encodeURIComponent(taskId)}/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(boardPassword.value ? { 'X-Board-Password': boardPassword.value } : {}),
+      },
+      body: JSON.stringify({ message: `remove ${name} from ${taskId}` }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Delete failed (${res.status})`);
+    return;
+  }
+
+  // Direct mode has to fetch the blob sha before it can remove the file.
+  const path = `attachments/${taskId}/${name}`;
+  const meta = await ghFetch(`${contentsUrl(repo, path)}?ref=${repo.branch}`).catch((err) => {
+    if (/not found|404/i.test(err.message)) return null;
+    throw err;
+  });
+  if (!meta) return; // already gone
+  await ghFetch(contentsUrl(repo, path), {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: `remove ${name} from ${taskId}`, sha: meta.sha, branch: repo.branch }),
+  });
+}
+
 // Confirms the token works AND can write, before we let the UI pretend it can.
 async function checkAccess(repo) {
   const info = await ghFetch(`https://api.github.com/repos/${repo.owner}/${repo.name}`);

@@ -37,7 +37,14 @@ Everything below the --- block is the brief: context, links, definition of done.
 Findings get appended here.
 ```
 
-`status` must be one of: `todo`, `doing`, `blocked`, `review`, `done`.
+`status` must be one of: `backlog`, `weekly`, `focus`, `review`, `done`, `admin`.
+
+The flow is `backlog` → `weekly` → `focus` → `review` → `done`. When you finish a task, put it in
+`review` rather than `done`: a human confirms it. `admin` is human-only — never take, move or edit a
+task in that column.
+`parent: LC-002` files a task under another; `links: LC-003, LC-004` records related work.
+`archived: true` retires a finished task — it stays in the repo but leaves the board. Archive rather
+than delete when work is complete.
 `id` is the task's permanent name (`LC-007`): quote it when you report, and never change it.
 The filename is the id and nothing else — `LC-007.md` — so creating a task means writing that file.
 Only change the fields you mean to change — keep the rest of the file intact.
