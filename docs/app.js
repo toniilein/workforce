@@ -382,17 +382,25 @@ function cardNode(task) {
   card.draggable = canEdit();
   card.title = canEdit() ? 'Click to edit · drag to move' : 'Click to open on GitHub';
 
-  if (task.labels.length) {
-    const row = el('div', 'card-labels');
-    for (const name of task.labels) {
-      const tint = labelTint(name);
-      const chip = el('span', 'label', name);
-      chip.style.setProperty('--lbg', tint.bg);
-      chip.style.setProperty('--lfg', tint.fg);
-      row.appendChild(chip);
-    }
-    card.appendChild(row);
+  // Labels and the due date share the chip row above the title. The date is the
+  // same shape as a label because it is the same kind of thing — a small fact
+  // about the task you scan for, rather than a footnote under it.
+  const chips = el('div', 'card-labels');
+  for (const name of task.labels) {
+    const tint = labelTint(name);
+    const chip = el('span', 'label', name);
+    chip.style.setProperty('--lbg', tint.bg);
+    chip.style.setProperty('--lfg', tint.fg);
+    chips.appendChild(chip);
   }
+  if (task.due && task.status !== 'done') {
+    const left = daysUntil(task.due);
+    const state = left < 0 ? ' overdue' : left <= 2 ? ' soon' : '';
+    const pill = el('span', 'label due' + state, formatDate(task.due));
+    pill.title = left < 0 ? `${-left} day${left === -1 ? '' : 's'} overdue` : `Due ${task.due}`;
+    chips.appendChild(pill);
+  }
+  if (chips.children.length) card.appendChild(chips);
 
   card.appendChild(el('div', 'card-title', task.title));
 
@@ -435,13 +443,6 @@ function cardNode(task) {
       });
       meta.appendChild(restore);
     }
-  }
-  if (task.due && task.status !== 'done') {
-    const left = daysUntil(task.due);
-    const state = left < 0 ? ' overdue' : left <= 2 ? ' soon' : '';
-    const pill = el('span', 'due' + state, formatDate(task.due));
-    pill.title = left < 0 ? `${-left} day${left === -1 ? '' : 's'} overdue` : `Due ${task.due}`;
-    meta.appendChild(pill);
   }
 
   const avatar = el('div', 'avatar' + (task.assignee ? '' : ' empty'));
