@@ -244,27 +244,26 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
 .column.drop-target, .column.touch-over { background: #f1eee2; box-shadow: 0 0 0 6px #f1eee2; }
 
 .col-head {
-  height: 38px;
+  height: 40px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 2px;
-  font-weight: 650;
+  padding: 0 12px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: var(--c, #9a988c);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14.5px;
+  letter-spacing: -0.1px;
   cursor: pointer;
 }
-.col-head::before {
-  content: '';
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--c, #9a988c);
-  flex: 0 0 auto;
-}
+.col-head::before { content: none; }
 .col-head .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .col-head .count {
-  background: #e9e5d7;
-  color: #6d6a5c;
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
   border-radius: 10px;
   padding: 1px 7px;
   font-size: 11.5px;
@@ -670,7 +669,7 @@ code { background: #efece0; padding: 1px 5px; border-radius: 4px; font-size: 12p
     scroll-snap-align: start;
   }
   .column.drop-target, .column.touch-over { box-shadow: none; }
-  .col-head { height: 42px; padding: 0 16px; }
+  .col-head { height: 40px; padding: 0 12px; margin: 0 12px 8px; border-radius: 8px; }
   .col-body { padding: 2px 12px 90px; gap: 12px; }
 
   /* Comfortable thumb targets. */
@@ -936,14 +935,14 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
 /* Action that lives in a column header, e.g. "Archive all" on Done. */
 .head-action {
   margin-left: auto;
-  border: 1px solid var(--line);
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 11.5px;
-  color: #6d6a5c;
+  color: #fff;
 }
-.head-action:hover { background: #f4f1e8; color: var(--ink); }
+.head-action:hover { background: rgba(255, 255, 255, 0.3); }
 
 /* Quick action on a card, e.g. Restore on an archived one. */
 .card-action {
@@ -1063,8 +1062,8 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
   font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: .5px;
-  color: #8b887c;
-  background: #efece1;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.22);
   border-radius: 999px;
   padding: 1px 7px;
 }
@@ -1092,3 +1091,8 @@ button.danger.armed { background: #b4544a; color: #fff; border-color: #b4544a; }
 .attachrow .attachlink { flex: 1; }
 .attach-remove { font-size: 11.5px; }
 .attach-remove[data-armed] { color: var(--danger); font-weight: 600; }
+
+/* The avatar doubles as the assignee picker. */
+.avatar-button { cursor: pointer; }
+.avatar-button:hover { box-shadow: 0 0 0 2px rgba(60, 58, 48, .18); }
+.assign-option .avatar { width: 24px; height: 24px; font-size: 10px; flex: 0 0 24px; }

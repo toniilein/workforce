@@ -407,10 +407,19 @@ function cardNode(task) {
   const avatar = el('div', 'avatar' + (task.assignee ? '' : ' empty'));
   if (task.assignee) paintAvatar(avatar, task.assignee);
   else avatar.title = 'Unassigned';
+  if (canEdit()) {
+    avatar.classList.add('avatar-button');
+    avatar.title = `${task.assignee ? personName(task.assignee) : 'Unassigned'} — click to change`;
+    avatar.addEventListener('click', (e) => {
+      e.stopPropagation(); // the card itself opens the detail panel
+      openAssignMenu(task, avatar);
+    });
+  }
   meta.appendChild(avatar);
   card.appendChild(meta);
 
-  card.addEventListener('click', () => {
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.avatar-button')) return;
     if (card.dataset.suppressClick) return;
     if (canEdit()) openDrawer(task.file);
     else window.open(editUrl(task.file), '_blank', 'noopener');
@@ -996,6 +1005,72 @@ async function removeTask(file) {
     setBusy(false);
     render();
   }
+}
+
+/* --------------------------------------------- who is responsible (quick pick) */
+
+function closeAssignMenu() {
+  const menu = $('#assign-menu');
+  if (menu) menu.hidden = true;
+}
+
+function openAssignMenu(task, anchor) {
+  const menu = $('#assign-menu');
+  if (!menu) return;
+  menu.innerHTML = '';
+  menu.appendChild(el('div', 'head', 'Responsible'));
+
+  const choose = (id) => {
+    closeAssignMenu();
+    if ((task.assignee || '') === (id || '')) return;
+    patchOpen_forTask(task, { assignee: id || '' }, `task: assign ${task.id} -> ${id || 'nobody'}`);
+  };
+
+  const none = el('button', 'assign-option' + (task.assignee ? '' : ' current'));
+  none.append(el('div', 'avatar empty'), el('span', null, 'Unassigned'));
+  none.addEventListener('click', () => choose(''));
+  menu.appendChild(none);
+
+  for (const id of Object.keys(PEOPLE)) {
+    const option = el('button', 'assign-option' + (task.assignee === id ? ' current' : ''));
+    const who = el('div');
+    who.appendChild(el('div', null, personName(id)));
+    option.append(paintAvatar(el('div', 'avatar'), id), who);
+    option.addEventListener('click', () => choose(id));
+    menu.appendChild(option);
+  }
+
+  menu.hidden = false;
+  // Anchor under the avatar, nudged back on screen if it would overflow.
+  const box = anchor.getBoundingClientRect();
+  const size = menu.getBoundingClientRect();
+  menu.style.top = `${Math.min(box.bottom + 6, window.innerHeight - size.height - 8)}px`;
+  menu.style.left = `${Math.max(8, Math.min(box.left - 150, window.innerWidth - size.width - 8))}px`;
+  setTimeout(() => document.addEventListener('pointerdown', closeAssignOnce, { once: true }), 0);
+}
+
+function closeAssignOnce(e) {
+  if (e.target.closest('#assign-menu')) {
+    document.addEventListener('pointerdown', closeAssignOnce, { once: true });
+    return;
+  }
+  closeAssignMenu();
+}
+
+// Same save path as the detail panel, but for a task that may not be open.
+function patchOpen_forTask(task, change, message) {
+  const before = { ...task };
+  Object.assign(task, change);
+  render();
+  saveTask(task, message)
+    .then(() => {
+      permissionProblem = false;
+    })
+    .catch((err) => {
+      Object.assign(task, before);
+      render();
+      reportWriteFailure(err);
+    });
 }
 
 /* -------------------------------------------------------------- attachments */
