@@ -750,6 +750,19 @@ function disconnectGitHub() {
 // Ask the browser's password manager to remember the token, so other devices
 // that sync with it fill it in instead of you retyping. Chromium implements
 // this explicitly; elsewhere the form markup lets the manager offer it itself.
+// Browsers evict "best effort" storage under pressure, and Safari clears
+// script-written storage on sites you haven't opened for a week — which would
+// silently log the board out. Asking for persistent storage exempts it.
+async function keepStorage() {
+  try {
+    if (navigator.storage?.persist && !(await navigator.storage.persisted())) {
+      await navigator.storage.persist();
+    }
+  } catch {
+    /* not supported — nothing lost, storage is just best-effort */
+  }
+}
+
 async function offerToRemember(token) {
   try {
     if (!window.PasswordCredential || !navigator.credentials?.store) return;
@@ -779,6 +792,7 @@ async function saveToken() {
     // The repo endpoint reports OUR access, not the token's, so it cannot prove
     // the token may write. The first real save is the honest test.
     permissionProblem = false;
+    await keepStorage();
     await offerToRemember(token);
     closeTokenModal();
     await start();
