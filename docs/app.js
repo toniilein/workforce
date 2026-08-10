@@ -348,10 +348,12 @@ const isOverdue = (iso) => {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 // Written out rather than localised, so the same card reads the same way to
-// everyone on the board regardless of whose browser is showing it.
+// everyone on the board regardless of whose browser is showing it. The year is
+// left off unless the date is not in this one, where its absence would mislead.
 function formatDate(iso) {
   const date = parseDay(iso);
-  return `${date.getDate()}. ${MONTHS[date.getMonth()]}. ${date.getFullYear()}`;
+  const stem = `${date.getDate()}. ${MONTHS[date.getMonth()]}.`;
+  return date.getFullYear() === new Date().getFullYear() ? stem : `${stem} ${date.getFullYear()}`;
 }
 
 // Whole days from today; negative once the date has passed.
