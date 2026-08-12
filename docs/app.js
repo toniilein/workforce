@@ -969,8 +969,9 @@ async function setPrio(task, on) {
 // also 1000 leaves no gap to land in.
 const ORDER_STEP = 1000;
 
-// Explicit where it exists, alphabetical rank where it does not. Only sound for
-// reading the board — see fullyOrdered() before using it to place a card.
+// Explicit where it exists, alphabetical rank where it does not. Implied ranks
+// are whole multiples of the step, which is what lets a stored order sit between
+// two of them without ever tying.
 function effectiveOrders(list) {
   const alpha = [...list].sort((a, b) => a.title.localeCompare(b.title));
   const map = new Map();
@@ -978,8 +979,6 @@ function effectiveOrders(list) {
   for (const t of list) if (t.order != null) map.set(t.file, t.order);
   return map;
 }
-
-const fullyOrdered = (list) => list.every((t) => t.order != null);
 
 function sortForColumn(list) {
   const eff = effectiveOrders(list);
@@ -1046,11 +1045,12 @@ async function spreadColumn(status) {
   });
   if (!changed.length) return;
 
-  toast(`Numbering ${SECTIONS.find((s) => s.id === status)?.title || status}…`);
+  const where = SECTIONS.find((s) => s.id === status)?.title || status;
+  toast(`Spacing out ${where} — ${changed.length} card${changed.length === 1 ? '' : 's'}…`);
   render();
-  await Promise.all(
-    changed.map((t) => saveTask(t, `task: order ${t.file.replace(/\.md$/, '')}`))
-  );
+  // One at a time: each write is a commit, and GitHub serialises commits on a
+  // branch, so firing them together makes them collide.
+  for (const t of changed) await saveTask(t, `task: order ${t.file.replace(/\.md$/, '')}`);
 }
 
 async function moveTask(file, status, index = null) {
@@ -1068,27 +1068,44 @@ async function moveTask(file, status, index = null) {
   const at = index == null ? column.length : Math.max(0, Math.min(index, column.length));
   if (sameColumn && at === currentIndex) return; // dropped back into its own slot
 
-  // Landing between two cards needs both of them to have a real number.
-  if (!fullyOrdered(column)) {
-    await spreadColumn(status);
-    return moveTask(file, status, index);
-  }
-
+  // Land between the neighbours' effective orders — stored where the card has
+  // one, implied from its position where it does not. Numbering the column
+  // first would be tidier, but on a git-backed board that is one commit per
+  // card, and firing those at once races the branch into 409s. One drop is one
+  // write.
+  // Computed over `shown`, the same list whose order put the cards on screen.
+  // Working these out over `column` instead would renumber the implied ranks of
+  // everything alphabetically after the card being dragged, so the neighbours
+  // would no longer be in ascending order and a drop could land a slot out.
+  const eff = effectiveOrders(shown);
   const above = column[at - 1];
   const below = column[at];
-  const lo = above ? above.order : (below ? below.order - ORDER_STEP : 0);
-  const hi = below ? below.order : (above ? above.order + ORDER_STEP : ORDER_STEP);
+  const lo = above ? eff.get(above.file) : (below ? eff.get(below.file) - ORDER_STEP : 0);
+  const hi = below ? eff.get(below.file) : (above ? eff.get(above.file) + ORDER_STEP : ORDER_STEP);
 
   // Midpoints halve the gap each time; after ~20 drops into the same slot there
-  // is no room left. Spread that column out again — the only path that writes
-  // more than one file, and one you have to work at to reach.
+  // is no room left. Spreading the column out again is the only path that
+  // writes more than one file, and one you have to work at to reach.
   if (hi - lo < 0.002) {
-    await spreadColumn(status);
+    try {
+      await spreadColumn(status);
+    } catch (err) {
+      Object.assign(task, was);
+      render();
+      return reportWriteFailure(err);
+    }
     return moveTask(file, status, index);
   }
 
+  // An implied order is always a whole multiple of the step, so a midpoint that
+  // lands on one would tie with a card that has no order of its own. Step off it.
+  const round3 = (n) => Math.round(n * 1000) / 1000;
+  const taken = new Set(column.map((t) => eff.get(t.file)));  // never tie with a neighbour
+  let landed = round3((lo + hi) / 2);
+  while (taken.has(landed) && landed + 0.001 < hi) landed = round3(landed + 0.001);
+
   task.status = status;
-  task.order = Math.round(((lo + hi) / 2) * 1000) / 1000;
+  task.order = landed;
   render();
   try {
     const name = task.file.replace(/\.md$/, '');
