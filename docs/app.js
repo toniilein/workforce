@@ -438,9 +438,7 @@ function cardNode(task) {
     flag.title = 'Priority';
     meta.appendChild(flag);
   }
-  // The date stands where the id used to. The id is still the task's name — it
-  // is on the card's tooltip, in the panel and in the filename — but on the
-  // card itself a date earns the space and LC-014 does not.
+  if (task.id) meta.appendChild(el('span', 'task-id', task.id));
   if (task.due && task.status !== 'done') {
     const left = daysUntil(task.due);
     const state = left < 0 ? ' overdue' : left <= 2 ? ' soon' : '';
