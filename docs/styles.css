@@ -291,7 +291,7 @@ button.small { height: 28px; font-size: 13px; padding: 0 10px; }
   padding: 2px 2px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 5px;
   scrollbar-width: thin;
   scrollbar-color: #d9d4c4 transparent;
 }
@@ -718,7 +718,7 @@ code { background: #efece0; padding: 1px 5px; border-radius: 4px; font-size: 12p
   }
   .column.drop-target, .column.touch-over { box-shadow: none; }
   .col-head { height: 40px; padding: 0 12px; margin: 0 12px 8px; border-radius: 8px; }
-  .col-body { padding: 2px 12px 90px; gap: 8px; }
+  .col-body { padding: 2px 12px 90px; gap: 5px; }
 
   /* Comfortable thumb targets. */
   .card { padding: 14px; }
