@@ -130,6 +130,32 @@ async function loadTasks() {
 // should appear here without anyone pressing Refresh. Rather than re-downloading
 // every task on a timer, ask only for the file names and their shas (one
 // request) and reload in full when that fingerprint moves.
+// Files we have just written, and the sha the write returned. GitHub's API is
+// eventually consistent: a read moments after a commit can still hand back the
+// version before it. Applying that would drop the card straight back where it
+// came from — which looks exactly like the move was never saved.
+const justWrote = new Map(); // file -> { sha, at }
+const WRITE_SETTLE_MS = 45_000;
+
+function noteWrite(file, sha) {
+  if (sha) justWrote.set(file, { sha, at: Date.now() });
+}
+
+// True while a read still shows a version older than something we just wrote.
+function readIsStale(state) {
+  const now = Date.now();
+  for (const [file, rec] of [...justWrote]) {
+    if (now - rec.at > WRITE_SETTLE_MS) {
+      justWrote.delete(file); // gave up waiting; trust the server from here
+      continue;
+    }
+    const seen = state.find((s) => s.file === file);
+    if (!seen || seen.sha !== rec.sha) return true;
+    justWrote.delete(file); // the server has caught up with this one
+  }
+  return false;
+}
+
 async function fetchState() {
   if (gateway.active) {
     const res = await fetch('./api/tasks/state');
@@ -162,6 +188,7 @@ async function pollChanges() {
 
   try {
     const state = await fetchState();
+    if (readIsStale(state)) return; // our own write has not propagated yet
     if (fingerprint(state) === currentFingerprint()) return;
 
     const openId = openFile ? byFile(openFile)?.id : null;
@@ -297,6 +324,7 @@ async function saveTask(task, message) {
   try {
     const res = await putFile(REPO, `${REPO.dir}/${task.file}`, toMarkdown(task), message, task.sha);
     task.sha = res.content.sha; // keep the new sha or the next save 409s
+    noteWrite(task.file, task.sha);
     render();
   } catch (err) {
     // The file moved or vanished under us — an old tab, or a rename elsewhere.
@@ -309,6 +337,7 @@ async function saveTask(task, message) {
         task.sha = fresh.sha;
         const res = await putFile(REPO, `${REPO.dir}/${task.file}`, toMarkdown(task), message, task.sha);
         task.sha = res.content.sha;
+        noteWrite(task.file, task.sha);
         render();
         return;
       }
