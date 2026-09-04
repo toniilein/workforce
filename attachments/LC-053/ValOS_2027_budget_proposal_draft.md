@@ -85,23 +85,48 @@ The completed-assessment figure is an outcome target, not an unconditional payme
 
 Do not describe self-assessed or merely participating operators as “certified.” Public communications must distinguish claimed, evidenced, and independently assessed status.
 
-## Budget
+## Budget and staffing model
 
-| Workstream | 2027 budget (DAI) | Share |
-|---|---:|---:|
-| Governance and programme management | 42,000 | 29% |
-| Standard maintenance and releases | 36,000 | 25% |
-| Assurance operations and assessor onboarding | 30,000 | 21% |
-| Operator adoption and stakeholder communications | 24,000 | 17% |
-| Reporting, tooling, legal/admin support | 12,000 | 8% |
-| **Total core request** | **144,000** | **100%** |
+The 144,000 DAI request is built from **1,920 delivery hours**, equivalent to **0.92 annual FTE** using 2,080 hours as 1.0 FTE. The implied blended rate is **75 DAI/hour**.
+
+These are role envelopes, not proposed salaries or named appointments. A single contributor may cover more than one role, but actual invoices and quarterly reporting should reconcile to these hour caps.
+
+| Role envelope | Hours | Annual FTE | Indicative rate (DAI/h) | Cost (DAI) |
+|---|---:|---:|---:|---:|
+| Programme and governance lead | 720 | 0.35 | 75 | 54,000 |
+| Standards and assurance lead | 720 | 0.35 | 80 | 57,600 |
+| Adoption and community coordinator | 360 | 0.17 | 60 | 21,600 |
+| Legal/editorial specialist reserve | 120 | 0.06 | 90 | 10,800 |
+| **Total** | **1,920** | **0.92** | **75 blended** | **144,000** |
+
+### Hours and cost by workstream
+
+| Workstream | Programme / governance h | Standards / assurance h | Adoption h | Specialist h | Total h | Cost (DAI) |
+|---|---:|---:|---:|---:|---:|---:|
+| Governance and programme management | 400 | 40 | 40 | 60 | 540 | 41,000 |
+| Standard maintenance and releases | 80 | 400 | 20 | 40 | 540 | 42,800 |
+| Assurance operations and assessor onboarding | 100 | 220 | 40 | 20 | 380 | 29,300 |
+| Operator adoption and stakeholder communications | 80 | 40 | 220 | 0 | 340 | 22,400 |
+| Reporting, tooling, legal/admin support | 60 | 20 | 40 | 0 | 120 | 8,500 |
+| **Total** | **720** | **720** | **360** | **120** | **1,920** | **144,000** |
+
+### Expected allocation over the year
+
+- **Q1 — 520 hours:** governance package, annual roadmap, contributor assignments, assessor/onboarding materials.
+- **Q2 — 500 hours:** standard maintenance, release candidate, assessor pipeline, operator onboarding, mid-year report.
+- **Q3 — 460 hours:** assurance engagements, issue resolution, operator support, evidence and quality review.
+- **Q4 — 440 hours:** stable release, annual reporting, financial reconciliation, and 2028 recommendations.
+
+Quarterly hours may move by up to 10% without changing the annual role caps. Movement beyond that threshold should be explained in the next report and approved through the grant's milestone review.
 
 ### Budget rationale
 
 - The prior ValOS/D.U.C.K. build phase requested **75,200 DAI for six months**. A simple annualisation would be 150,400 DAI. The proposed 144,000 DAI is slightly below that run rate while funding a full year of maintenance and operations.
-- The budget assumes a lean delivery model using the public repository and existing ValOS infrastructure. It does not include a broad paid-marketing programme.
+- The bottom-up model produces a 75 DAI/hour blended rate across 1,920 hours. This should be validated against named contributors and their agreed rates before submission.
+- The budget assumes a lean, part-time delivery model using the public repository and existing ValOS infrastructure. It does not include a broad paid-marketing programme.
 - It does not include assessment fees or operator remediation costs funded through the existing subsidy pool.
-- Final submission should add named contributors, day rates or monthly allocations, and expected effort by workstream. Without this cost build-up, the 144,000 DAI should be treated as a planning envelope rather than a final priced request.
+- The hour model is intentionally below one aggregate FTE. If stakeholders expect a full-time programme office, the deliverables or budget must increase; disguising that gap inside vague workstream fees would be misleading.
+- Until the named contributors and rates are confirmed, 144,000 DAI remains a planning envelope rather than a final priced request.
 
 ## Payment and accountability
 
@@ -145,7 +170,7 @@ Counts must link to public evidence wherever confidentiality permits. Confidenti
 ## Decisions required before forum submission
 
 1. Confirm the 2027 legal/grant recipient and accountable proposal owner.
-2. Add named team members, roles, effort assumptions, and rates.
+2. Confirm named team members against the proposed 1,920-hour / 0.92-FTE role model and replace indicative rates with agreed rates.
 3. Reconcile the existing 60,000 DAI assessment pool: disbursed, contracted, spent, and remaining.
 4. Confirm the 2026 year-end baseline: approved assessors, operators in each funnel stage, completed reviews, and public listings.
 5. Agree whether four completed assessments is realistic or should be presented as a range.
@@ -163,4 +188,3 @@ Counts must link to public evidence wherever confidentiality permits. Confidenti
 ## Proposed forum title
 
 **LEGO Proposal: Operate and Scale ValOS in 2027 — Governance, Standard Maintenance, Assurance and Adoption**
-
