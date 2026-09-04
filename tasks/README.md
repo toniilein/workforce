@@ -37,14 +37,9 @@ Everything under the `---` block is the description — the brief.
 
 ## Label conventions
 
-Use lowercase, reusable labels that help group tasks across the board. Prefer no more than three:
+Use only these four top-level project/context labels: `personal`, `lionscraft`, `risk`, and `lido`.
 
-- **Project/context:** `lionscraft`, `risk`, `lido`, `adb`, `sri-lanka`, `manila`, `personal`
-- **Workstream:** `finance`, `governance`, `partnership`, `research`, `strategy`, `pitch`, `marketing`, `website`, `travel`, `event`, `meeting`, `health`, `car`, `tokenization`, `fundraising`, `architecture`
-
-All tasks tagged `adb` must also carry the `risk` tag.
-
-Avoid one-off action labels such as `cancel`, `refund`, `complaint`, `registration`, `subscription`, or `errands`; the title already describes the action and those labels do not create useful groups.
+ADB work is classified under `risk`. Do not create action, workstream, location, or organization labels; the task title and description hold that detail.
 
 Files are named after the id alone: `LC-004.md`. Because the filename never depends on the title,
 renaming a task is a one-line edit inside the file — nothing has to move, and a task can never be
