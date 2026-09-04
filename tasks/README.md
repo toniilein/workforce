@@ -35,6 +35,15 @@ Everything under the `---` block is the description — the brief.
 | `links` | comma-separated ids of related tasks, e.g. `LC-003, LC-004` |
 | `archived` | `true` to keep the task in the repo but off the board |
 
+## Label conventions
+
+Use lowercase, reusable labels that help group tasks across the board. Prefer no more than three:
+
+- **Project/context:** `lionscraft`, `risk`, `lido`, `adb`, `sri-lanka`, `manila`, `personal`
+- **Workstream:** `finance`, `governance`, `partnership`, `research`, `strategy`, `pitch`, `marketing`, `website`, `travel`, `event`, `meeting`, `health`, `car`, `tokenization`, `fundraising`, `architecture`
+
+Avoid one-off action labels such as `cancel`, `refund`, `complaint`, `registration`, `subscription`, or `errands`; the title already describes the action and those labels do not create useful groups.
+
 Files are named after the id alone: `LC-004.md`. Because the filename never depends on the title,
 renaming a task is a one-line edit inside the file — nothing has to move, and a task can never be
 accidentally forked into two files.
