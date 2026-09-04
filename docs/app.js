@@ -109,16 +109,31 @@ async function loadTasks() {
       .sort((a, b) => a.title.localeCompare(b.title));
   }
 
-  const listUrl = `https://api.github.com/repos/${REPO.owner}/${REPO.name}/contents/${REPO.dir}?ref=${REPO.branch}`;
-  const files = (await ghFetch(listUrl)).filter(
-    (f) => f.type === 'file' && f.name.endsWith('.md') && f.name.toLowerCase() !== 'readme.md'
+  // Pin raw reads to the branch's current commit. Raw URLs that name the branch
+  // can remain stale for several minutes even after the Contents API reports a
+  // new blob, making a moved card appear to jump back to its previous column.
+  const branch = await ghFetch(
+    `https://api.github.com/repos/${REPO.owner}/${REPO.name}/branches/${REPO.branch}`
   );
-
-  const bust = Date.now(); // raw CDN caches for minutes; Refresh must really refresh
+  const commit = branch.commit.sha;
+  const tree = await ghFetch(
+    `https://api.github.com/repos/${REPO.owner}/${REPO.name}/git/trees/${commit}?recursive=1`
+  );
+  const prefix = `${REPO.dir}/`;
+  const files = tree.tree.filter(
+    (f) =>
+      f.type === 'blob' &&
+      f.path.startsWith(prefix) &&
+      !f.path.slice(prefix.length).includes('/') &&
+      f.path.endsWith('.md') &&
+      f.path.toLowerCase() !== `${prefix}readme.md`
+  );
   const loaded = await Promise.all(
     files.map(async (f) => {
-      const text = await fetch(`${f.download_url}?t=${bust}`).then((r) => (r.ok ? r.text() : ''));
-      return { ...parseTask(f.name, text), sha: f.sha };
+      const path = f.path.split('/').map(encodeURIComponent).join('/');
+      const rawUrl = `https://raw.githubusercontent.com/${REPO.owner}/${REPO.name}/${commit}/${path}`;
+      const text = await fetch(rawUrl).then((r) => (r.ok ? r.text() : ''));
+      return { ...parseTask(f.path.slice(prefix.length), text), sha: f.sha };
     })
   );
   return loaded.sort((a, b) => a.title.localeCompare(b.title));
